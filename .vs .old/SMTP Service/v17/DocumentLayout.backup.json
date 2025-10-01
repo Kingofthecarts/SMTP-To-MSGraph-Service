@@ -1,0 +1,37 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\OneDrive\\Dores\\Share Den - Documents\\Coding\\C#\\SMTP Service\\SMTP Service\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{5348D3ED-BE4F-4459-9FD5-1B1BFCC1EB04}|SMTP Service\\SMTP Service.csproj|d:\\onedrive\\dores\\share den - documents\\coding\\c#\\smtp service\\smtp service\\smtp service\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{5348D3ED-BE4F-4459-9FD5-1B1BFCC1EB04}|SMTP Service\\SMTP Service.csproj|solutionrelative:smtp service\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Program.cs",
+              "DocumentMoniker": "D:\\OneDrive\\Dores\\Share Den - Documents\\Coding\\C#\\SMTP Service\\SMTP Service\\SMTP Service\\Program.cs",
+              "RelativeDocumentMoniker": "SMTP Service\\Program.cs",
+              "ToolTip": "D:\\OneDrive\\Dores\\Share Den - Documents\\Coding\\C#\\SMTP Service\\SMTP Service\\SMTP Service\\Program.cs",
+              "RelativeToolTip": "SMTP Service\\Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABgAAAAPAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-10-01T07:41:24.2Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

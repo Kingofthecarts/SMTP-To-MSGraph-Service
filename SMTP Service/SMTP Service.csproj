@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-SMTP_Service-e7879f41-b88e-40fa-8b6b-2fe0828c3265</UserSecretsId>
+    <RootNamespace>SMTP_Service</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="config\**" />
+    <Compile Remove="logs\**" />
+    <Content Remove="config\**" />
+    <Content Remove="logs\**" />
+    <EmbeddedResource Remove="config\**" />
+    <EmbeddedResource Remove="logs\**" />
+    <None Remove="config\**" />
+    <None Remove="logs\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="install-service.bat" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="install-service.bat">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.16.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Graph" Version="5.93.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.9" />
+  </ItemGroup>
+</Project>

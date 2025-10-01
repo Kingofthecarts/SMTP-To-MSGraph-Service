@@ -1,0 +1,406 @@
+================================================================================
+SMTP TO MS GRAPH RELAY - MESSAGE FLOW
+================================================================================
+Last Updated: 2025-10-01
+
+MESSAGE FLOW DIAGRAM
+====================
+
+┌─────────────────┐
+│  Email Client   │ (e.g., Outlook, Thunderbird, Telnet, or any SMTP device)
+│  or Device      │
+└────────┬────────┘
+         │
+         │ 1. SMTP Connection (port 25)
+         │    Commands sent:
+         │    - HELO/EHLO (handshake)
+         │    - AUTH LOGIN (optional, base64 encoded username/password)
+         │    - MAIL FROM: <sender@domain.com>
+         │    - RCPT TO: <recipient@domain.com>
+         │    - DATA
+         │    - Subject: Email subject
+         │    - (blank line)
+         │    - Email body content
+         │    - . (period on its own line)
+         │    - QUIT
+         ▼
+┌─────────────────────────────────────────┐
+│   Our SMTP Service (Custom Built)      │
+│   (Running on Windows - Port 25)       │
+│                                         │
+│  ┌───────────────────────────────────┐  │
+│  │ SmtpServerService                 │  │
+│  │ - TCP Listener on port 25        │  │ 2. Accept TCP connection
+│  │ - Async connection handling      │  │    Send: 220 hostname SMTP Ready
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│             ▼                            │
+│  ┌───────────────────────────────────┐  │
+│  │ SmtpProtocolHandler (per client)  │  │ 3. Process SMTP commands
+│  │ - Parse HELO/EHLO                │  │    - Validate authentication
+│  │ - Handle AUTH LOGIN/PLAIN        │  │    - Extract MAIL FROM
+│  │ - Store MAIL FROM address        │  │    - Store RCPT TO addresses
+│  │ - Store RCPT TO addresses        │  │    - Receive DATA content
+│  │ - Receive and parse DATA         │  │    - Parse headers/body
+│  │ - Create EmailMessage object     │  │    Send: 250 OK responses
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│             ▼                            │
+│  ┌───────────────────────────────────┐  │
+│  │ QueueManager                      │  │ 4. Enqueue email
+│  │ - Add to ConcurrentQueue          │  │    - Assign unique ID (GUID)
+│  │ - Track with EmailQueueItem      │  │    - Set status: Pending
+│  │ - Assign retry counter           │  │    - Log queue event
+│  │ - Log: "Email queued"            │  │
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│             ▼                            │
+│  ┌───────────────────────────────────┐  │
+│  │ QueueProcessorService             │  │ 5. Process queue (background)
+│  │ - Dequeue next email              │  │    - Wait for items
+│  │ - Set status: Processing          │  │    - Process one at a time
+│  └──────────┬────────────────────────┘  │
+│             │                            │
+│             ▼                            │
+│  ┌───────────────────────────────────┐  │
+│  │ GraphEmailService                 │  │ 6. Authenticate to MS Graph
+│  │ - ClientSecretCredential          │  │    - Use Tenant ID
+│  │ - Create GraphServiceClient       │  │    - Use Client ID
+│  │ - Obtain OAuth access token       │  │    - Use Client Secret
+│  │ - Build Message object            │  │    - Get bearer token
+│  │ - Call /users/{user}/sendMail    │  │
+│  └──────────┬────────────────────────┘  │
+└─────────────┼───────────────────────────┘
+              │
+              │ 7. HTTPS POST Request to Graph API
+              │    POST https://graph.microsoft.com/v1.0/users/{senderEmail}/sendMail
+              │    Authorization: Bearer {token}
+              │    Content-Type: application/json
+              │    Body: { "message": { ... }, "saveToSentItems": true }
+              ▼
+┌──────────────────────────────────────────┐
+│   Microsoft Graph API                    │
+│   (graph.microsoft.com)                  │
+│   - Validates token                      │
+│   - Checks permissions (Mail.Send)       │
+│   - Processes send request               │
+└──────────┬───────────────────────────────┘
+           │
+           │ 8. Microsoft 365 processes and routes
+           │    - Applies tenant email policies
+           │    - Uses tenant's email reputation
+           │    - Routes through Microsoft infrastructure
+           ▼
+┌──────────────────────────────────────────┐
+│   Microsoft 365 / Exchange Online        │
+│   - Email appears in Sent Items          │
+│   - Email sent to recipient              │
+└──────────┬───────────────────────────────┘
+           │
+           │ 9. Email delivered via internet
+           │    - Uses Microsoft's mail servers
+           │    - Standard SMTP delivery to recipient
+           ▼
+┌──────────────────────────────────────────┐
+│   Recipient's Mail Server                │
+│   - Receives from Microsoft servers      │
+│   - Delivers to mailbox                  │
+└──────────┬───────────────────────────────┘
+           │
+           │ 10. Final delivery
+           ▼
+┌──────────────────────────────────────────┐
+│   Recipient's Mailbox                    │
+│   (recipient@domain.com)                 │
+│   - Email appears in inbox               │
+│   - From: {senderEmail}                  │
+└──────────────────────────────────────────┘
+
+
+DETAILED FLOW STEPS WITH ACTUAL CODE COMPONENTS
+===============================================
+
+STEP 1: CLIENT CONNECTS (SmtpServerService.cs)
+-----------------------------------------------
+- TCP connection established on port 25
+- AcceptTcpClientAsync() accepts the connection
+- New SmtpProtocolHandler created for this client
+- Sends: "220 {MachineName} SMTP Ready"
+
+STEP 2: SMTP HANDSHAKE (SmtpProtocolHandler.cs)
+-----------------------------------------------
+Client sends: HELO test.local  or  EHLO test.local
+Server responds:
+  250-Hello test.local
+  250-AUTH LOGIN PLAIN (if authentication required)
+  250-SIZE {maxSize}
+  250 HELP
+
+STEP 3: AUTHENTICATION (if required)
+------------------------------------
+Client sends: AUTH LOGIN
+Server responds: 334 VXNlcm5hbWU6 (base64 "Username:")
+Client sends: {base64 encoded username}
+Server responds: 334 UGFzc3dvcmQ6 (base64 "Password:")
+Client sends: {base64 encoded password}
+Server validates credentials from SmtpSettings.Credentials
+Server responds: 235 Authentication successful  OR  535 Authentication failed
+
+STEP 4: ENVELOPE INFORMATION
+-----------------------------
+Client sends: MAIL FROM:<alex@dores.ca>
+Server extracts: "alex@dores.ca"
+Server stores in: _mailFrom
+Server responds: 250 OK
+
+Client sends: RCPT TO:<recipient@example.com>
+Server extracts: "recipient@example.com"
+Server adds to: _rcptTo list
+Server responds: 250 OK
+(Can repeat RCPT TO for multiple recipients)
+
+STEP 5: EMAIL CONTENT
+---------------------
+Client sends: DATA
+Server responds: 354 Start mail input; end with <CRLF>.<CRLF>
+Server enters: _inDataMode = true
+
+Client sends:
+  Subject: Test Email
+  Content-Type: text/plain
+  
+  This is the email body.
+  .
+  
+Server processes each line until "." on its own line
+Server calls: ParseEmailData()
+Creates EmailMessage with:
+  - From: _mailFrom
+  - To: _rcptTo list
+  - Subject: parsed from headers
+  - Body: content after headers
+  - IsHtml: detected from Content-Type
+
+Server stores in: _lastParsedEmail
+Server responds: 250 OK: Message accepted for delivery
+
+STEP 6: QUEUE EMAIL (QueueManager.cs)
+--------------------------------------
+SmtpServerService calls: handler.GetLastEmail()
+Creates EmailQueueItem:
+  - Id: new GUID
+  - Message: EmailMessage
+  - Status: Pending
+  - QueuedAt: DateTime.Now
+  - RetryCount: 0
+
+QueueManager.Enqueue(email)
+Adds to: ConcurrentQueue<EmailQueueItem>
+Logs: "Email queued: {id} from {from} to {to}"
+
+STEP 7: PROCESS QUEUE (QueueProcessorService.cs)
+------------------------------------------------
+Background service running continuously
+Calls: _queueManager.Dequeue()
+Gets: EmailQueueItem
+Sets: Status = Processing
+Logs: "Processing email from queue: {id}"
+
+STEP 8: MS GRAPH AUTHENTICATION (GraphEmailService.cs)
+------------------------------------------------------
+Creates: ClientSecretCredential(tenantId, clientId, clientSecret)
+Creates: GraphServiceClient(credential)
+Library automatically:
+  - Requests token from: https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token
+  - Uses client credentials grant flow
+  - Obtains bearer token
+  - Caches token for reuse
+
+STEP 9: BUILD GRAPH MESSAGE (GraphEmailService.cs)
+--------------------------------------------------
+Creates GraphMessage object:
+  Subject: email.Subject
+  Body: new ItemBody { ContentType: Html/Text, Content: email.Body }
+  ToRecipients: email.To.Select(to => new Recipient { EmailAddress: { Address: to }})
+  CcRecipients: (if any)
+  BccRecipients: (if any)
+  From: new Recipient { EmailAddress: { Address: senderEmail }}
+
+STEP 10: SEND VIA GRAPH API (GraphEmailService.cs)
+--------------------------------------------------
+Calls: _graphClient.Users[senderEmail].SendMail.PostAsync(requestBody)
+Microsoft.Kiota library:
+  - POST https://graph.microsoft.com/v1.0/users/{senderEmail}/sendMail
+  - Header: Authorization: Bearer {token}
+  - Header: Content-Type: application/json
+  - Body: JSON with message and saveToSentItems: true
+
+STEP 11: HANDLE RESPONSE
+------------------------
+SUCCESS (status 202 Accepted):
+  - QueueManager.MarkAsSent(id)
+  - Status: Sent
+  - Logs: "Email sent via Graph API: From={from}, To={to}, Subject={subject}"
+  
+FAILURE (exception thrown):
+  - QueueManager.MarkAsFailed(id, error)
+  - RetryCount++
+  - If RetryCount < MaxRetryAttempts:
+    - Status: Retrying
+    - NextRetry: Now + RetryDelayMinutes
+    - Re-queue for retry
+    - Logs: "Email failed (attempt {count}/{max}): Will retry"
+  - Else:
+    - Status: Failed
+    - Logs: "Email failed permanently after {count} attempts"
+
+
+KEY POINTS
+==========
+
+• On Behalf of Tenant: Email sent through YOUR Microsoft 365 tenant,
+  appearing from your organization's mail servers
+
+• No User Mapping: App authenticates as itself using client credentials,
+  sends on behalf of the specified sender email
+
+• SMTP Envelope vs Headers: System uses SMTP envelope (MAIL FROM/RCPT TO)
+  as primary source, with optional header parsing for subject/cc
+
+• Your Machine as Relay: 
+  Devices/Apps → Your SMTP Server → Microsoft Graph → Microsoft 365 → Internet
+
+• Port 25: Standard SMTP port requires admin privileges to bind
+
+• Authentication: SMTP clients must provide valid credentials from configuration
+  (optional, controlled by RequireAuthentication setting)
+
+• Queue with Retry: Failed sends retry automatically with configurable attempts
+  and delays. Emails persist in memory queue.
+
+• Logging: All transactions (SMTP commands, Graph API calls, success, failures)
+  logged to rolling daily files in logs/ directory
+
+• Thread Safety: ConcurrentQueue ensures safe multi-threaded access
+
+• Async Throughout: All I/O operations use async/await for efficiency
+
+
+EXAMPLE TELNET SESSION
+======================
+
+$ telnet localhost 25
+220 ALEX-GAMING SMTP Ready
+
+> EHLO test.local
+250-Hello test.local
+250-AUTH LOGIN PLAIN
+250-SIZE 10485760
+250 HELP
+
+> MAIL FROM:<sender@domain.com>
+250 OK
+
+> RCPT TO:<recipient@example.com>
+250 OK
+
+> DATA
+354 Start mail input; end with <CRLF>.<CRLF>
+
+> Subject: Test Email
+> 
+> This is a test email.
+> .
+250 OK: Message accepted for delivery
+
+> QUIT
+221 Bye
+
+
+CONSOLE OUTPUT EXAMPLE
+======================
+
+[20:35:11 INF] SMTP server successfully started and listening on port 25
+[SMTP] Waiting for client connection...
+[SMTP] Client accepted, starting handler...
+[SMTP] Client connected from: 127.0.0.1:52176
+[SMTP] Creating protocol handler...
+[SMTP] Sending greeting: 220 ALEX-GAMING SMTP Ready
+[SMTP] Greeting sent, waiting for commands...
+[SMTP] Received: EHLO test.local
+[SMTP] Sending response: 250-Hello test.local...
+[SMTP] Received: MAIL FROM:<sender@domain.com>
+[SMTP] Sending response: 250 OK
+[SMTP] Received: RCPT TO:<recipient@example.com>
+[SMTP] Sending response: 250 OK
+[SMTP] Received: DATA
+[SMTP] Sending response: 354 Start mail input; end with <CRLF>.<CRLF>
+[SMTP] Received: Subject: Test
+[SMTP] Received: .
+[SMTP] Sending response: 250 OK: Message accepted for delivery
+[SMTP] Queuing email: From=sender@domain.com, To=recipient@example.com
+[21:31:35 INF] Email queued: 8a6279f5-0045-4e37-a3b2-350fe4d308a9 from sender@domain.com to recipient@example.com
+[21:31:36 INF] Processing email from queue: 8a6279f5-0045-4e37-a3b2-350fe4d308a9
+[21:31:37 INF] Email sent via Graph API: From=sender@domain.com, To=recipient@example.com, Subject=Test
+
+
+ERROR HANDLING EXAMPLES
+=======================
+
+Expired Client Secret:
+[ERR] Authentication failed: ClientSecretCredential authentication failed
+[ERR] CLIENT SECRET IS INVALID OR EXPIRED! Create a new client secret in Azure Portal.
+
+Invalid Tenant ID:
+[ERR] TENANT ID NOT FOUND! Verify your Tenant ID is correct.
+[ERR] AADSTS90002: Tenant '...' not found
+
+Missing Permissions:
+[ERR] Graph API OData error: Insufficient privileges to complete the operation
+[ERR] APP NOT AUTHORIZED! Check API permissions (Mail.Send) and ensure admin consent is granted.
+
+
+CONFIGURATION TESTING
+=====================
+
+Test MS Graph Connection (ConfigurationForm - MS Graph Settings tab):
+1. Enter credentials
+2. Click "Test Connection"
+3. System attempts: _graphClient.Users[senderEmail].GetAsync()
+4. Success: Shows "MS Graph connection successful!"
+5. Failure: Shows specific error with guidance
+
+Send Test Email (ConfigurationForm - Test Email tab):
+1. Enter recipient email
+2. Enter subject and body
+3. Click "Send Test Email"
+4. System creates EmailMessage and calls GraphEmailService.SendEmailAsync()
+5. Bypasses SMTP server entirely (direct Graph call)
+6. Success: Shows "Test email sent successfully!"
+7. Check recipient inbox to verify delivery
+
+
+OPERATIONAL MODES
+=================
+
+1. Service Mode: SMTP Service.exe
+   - Console application with full logging output
+   - No system tray
+   - Best for debugging
+
+2. Tray Mode: SMTP Service.exe --tray
+   - System tray icon only
+   - No console window
+   - Minimal interface
+   - Best for production
+
+3. Console + Tray Mode: SMTP Service.exe --console
+   - Console window with all logs
+   - System tray icon for configuration
+   - Best of both worlds
+   - Best for development/monitoring
+
+
+================================================================================
+END OF MESSAGE FLOW DOCUMENTATION
+================================================================================
