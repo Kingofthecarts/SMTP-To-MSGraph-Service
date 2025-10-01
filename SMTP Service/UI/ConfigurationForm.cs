@@ -458,7 +458,7 @@ namespace SMTP_Service.UI
             try
             {
                 var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                var changelogPath = Path.Combine(baseDirectory, "docs", "CHANGELOG.txt");
+                var changelogPath = Path.Combine(baseDirectory, "docs", "CHANGELOG.md");
                 
                 if (File.Exists(changelogPath))
                 {
@@ -468,7 +468,7 @@ namespace SMTP_Service.UI
                 }
                 else
                 {
-                    rtbChangelog.Text = "CHANGELOG.txt not found.\n\n" +
+                    rtbChangelog.Text = "CHANGELOG.md not found.\n\n" +
                                        $"Expected location: {changelogPath}\n\n" +
                                        "The changelog file should be located in the 'docs' folder " +
                                        "next to the application executable.";
@@ -502,7 +502,7 @@ namespace SMTP_Service.UI
                 try
                 {
                     var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                    var changelogPath = Path.Combine(baseDirectory, "docs", "CHANGELOG.txt");
+                    var changelogPath = Path.Combine(baseDirectory, "docs", "CHANGELOG.md");
                     
                     if (File.Exists(changelogPath))
                     {
@@ -515,7 +515,7 @@ namespace SMTP_Service.UI
                     }
                     else
                     {
-                        MessageBox.Show($"CHANGELOG.txt not found at:\n{changelogPath}", "File Not Found", 
+                        MessageBox.Show($"CHANGELOG.md not found at:\n{changelogPath}", "File Not Found", 
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                 }
@@ -536,53 +536,109 @@ namespace SMTP_Service.UI
             
             foreach (var line in lines)
             {
-                // Title header (centered text with "CHANGELOG")
-                if (line.Contains("SMTP TO MS GRAPH RELAY") || line.Contains("CHANGELOG") && line.Length < 50 && !line.StartsWith("For detailed"))
+                // Skip empty lines but preserve spacing
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    rtb.AppendText("\n");
+                    continue;
+                }
+                
+                // Main title (# Header)
+                if (line.StartsWith("# ") && !line.StartsWith("## "))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold);
+                    rtb.SelectionColor = System.Drawing.Color.DarkBlue;
+                    rtb.AppendText(line.Substring(2) + "\n");
+                    continue;
+                }
+                
+                // Version headers (## VERSION)
+                if (line.StartsWith("## VERSION"))
                 {
                     rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
-                    rtb.SelectionColor = System.Drawing.Color.DarkBlue;
-                    rtb.AppendText(line + "\n");
-                    continue;
-                }
-                
-                // Version headers (VERSION X.X.X)
-                if (line.StartsWith("VERSION "))
-                {
-                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
                     rtb.SelectionColor = System.Drawing.Color.DarkGreen;
-                    rtb.AppendText("\n" + line + "\n");
+                    rtb.AppendText("\n" + line.Substring(3) + "\n");
                     continue;
                 }
                 
-                // Section headers (NEW FEATURES:, BUG FIXES:, etc.)
-                if (line.EndsWith(":") && line.Length < 50 && line == line.ToUpper() && !line.StartsWith(" "))
+                // Section headers (## HEADER or ### HEADER)
+                if (line.StartsWith("### "))
                 {
                     rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
                     rtb.SelectionColor = System.Drawing.Color.DarkOrange;
-                    rtb.AppendText("\n" + line + "\n");
+                    rtb.AppendText("\n" + line.Substring(4) + "\n");
                     continue;
                 }
                 
-                // Divider lines (===)
-                if (line.Contains("======"))
+                if (line.StartsWith("## ") && !line.StartsWith("## VERSION"))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+                    rtb.SelectionColor = System.Drawing.Color.DarkRed;
+                    rtb.AppendText("\n" + line.Substring(3) + "\n");
+                    continue;
+                }
+                
+                // Horizontal rules (---)
+                if (line.Trim().StartsWith("---"))
                 {
                     rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular);
                     rtb.SelectionColor = System.Drawing.Color.LightGray;
-                    rtb.AppendText(line + "\n");
+                    rtb.AppendText("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
                     continue;
                 }
                 
-                // Bullet points (items starting with •)
-                if (line.TrimStart().StartsWith("•"))
+                // Bold items (- **Bold text**)
+                if (line.TrimStart().StartsWith("- **"))
+                {
+                    var content = line.TrimStart().Substring(2); // Remove "- "
+                    
+                    // Parse **bold** sections
+                    var parts = content.Split(new[] { "**" }, StringSplitOptions.None);
+                    
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
+                    rtb.SelectionColor = System.Drawing.Color.Black;
+                    rtb.AppendText("  • ");
+                    
+                    for (int i = 0; i < parts.Length; i++)
+                    {
+                        if (i % 2 == 1) // Odd indices are bold
+                        {
+                            rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+                            rtb.SelectionColor = System.Drawing.Color.Black;
+                            rtb.AppendText(parts[i]);
+                        }
+                        else
+                        {
+                            rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
+                            rtb.SelectionColor = System.Drawing.Color.Black;
+                            rtb.AppendText(parts[i]);
+                        }
+                    }
+                    rtb.AppendText("\n");
+                    continue;
+                }
+                
+                // Regular bullet points (- item)
+                if (line.TrimStart().StartsWith("- "))
                 {
                     rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
                     rtb.SelectionColor = System.Drawing.Color.Black;
-                    rtb.AppendText(line + "\n");
+                    rtb.AppendText("  • " + line.TrimStart().Substring(2) + "\n");
                     continue;
                 }
                 
-                // Sub-items (indented lines after bullets)
-                if (line.StartsWith("    ") && !line.TrimStart().StartsWith("•"))
+                // Emoji bullets (❌, 🔜, etc.)
+                if (line.TrimStart().StartsWith("❌") || line.TrimStart().StartsWith("✅") || 
+                    line.TrimStart().StartsWith("🔜"))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
+                    rtb.SelectionColor = System.Drawing.Color.DimGray;
+                    rtb.AppendText("  " + line.TrimStart() + "\n");
+                    continue;
+                }
+                
+                // Sub-items (indented with spaces)
+                if (line.StartsWith("  ") && !line.TrimStart().StartsWith("-"))
                 {
                     rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Italic);
                     rtb.SelectionColor = System.Drawing.Color.DarkSlateGray;

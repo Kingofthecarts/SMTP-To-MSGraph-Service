@@ -28,7 +28,7 @@
     <Content Include="install-service.bat">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="docs\CHANGELOG.txt">
+    <Content Include="docs\CHANGELOG.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
