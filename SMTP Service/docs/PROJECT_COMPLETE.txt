@@ -103,6 +103,17 @@ SMTP Service/
 NEXT STEPS - WHAT YOU NEED TO DO
 ================================================================================
 
+0. INSTALL .NET 9 DESKTOP RUNTIME (CRITICAL!)
+   Download from: https://dotnet.microsoft.com/download/dotnet/9.0
+   
+   - Select "Download .NET Desktop Runtime 9.0.x"
+   - Choose Windows x64 or x86
+   - Install and restart if prompted
+   - Verify: Run "dotnet --list-runtimes" in Command Prompt
+   - You should see: Microsoft.WindowsDesktop.App 9.0.x
+   
+   THE APPLICATION WILL NOT RUN WITHOUT THIS!
+
 1. INSTALL NUGET PACKAGES (CRITICAL!)
    Open Visual Studio → Right-click project → Manage NuGet Packages
    

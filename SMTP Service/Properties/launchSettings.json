@@ -2,6 +2,7 @@
   "profiles": {
     "SMTP_Service": {
       "commandName": "Project",
+      "commandLineArgs": "--console",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       },

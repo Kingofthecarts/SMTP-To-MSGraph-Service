@@ -1,0 +1,213 @@
+================================================================================
+DOCUMENTATION UPDATE - .NET 9 DESKTOP RUNTIME REQUIREMENT
+================================================================================
+Date: 2025-10-01
+Update: Added .NET 9 Desktop Runtime installation instructions
+
+================================================================================
+SUMMARY
+================================================================================
+
+Added comprehensive documentation about the requirement to install .NET 9
+Desktop Runtime for end users who want to run the application without 
+Visual Studio or the full .NET SDK.
+
+This is CRITICAL for users as the application will not run without the runtime.
+
+================================================================================
+FILES UPDATED
+================================================================================
+
+1. README.md
+   ✓ Added new "Prerequisites" subsection for .NET 9 Desktop Runtime
+   ✓ Included download link
+   ✓ Installation instructions
+   ✓ Verification command (dotnet --list-runtimes)
+   ✓ Positioned BEFORE NuGet packages section (users see it first)
+
+2. README.txt
+   ✓ Updated STEP 1: PREREQUISITES section
+   ✓ Added .NET 9 Desktop Runtime to checklist
+   ✓ Marked as CRITICAL with clear emphasis
+   ✓ Step-by-step installation instructions
+   ✓ Verification instructions
+
+3. SETUP_CHECKLIST.txt
+   ✓ Added NEW "STEP 0" for .NET 9 Desktop Runtime installation
+   ✓ Positioned BEFORE all other steps (can't do anything without it)
+   ✓ Checkboxes for each installation step
+   ✓ Clear warning: "WILL NOT RUN without this runtime installed"
+   ✓ Renumbered existing steps (STEP 1 is now STEP 2, etc.)
+
+4. PROJECT_COMPLETE.txt
+   ✓ Added "STEP 0" to NEXT STEPS section
+   ✓ Marked as CRITICAL!
+   ✓ Download link and verification steps
+   ✓ All caps warning for emphasis
+   ✓ Renumbered existing steps
+
+5. PROJECT_NOTES.txt
+   ✓ Added new "REQUIREMENTS" section after PROJECT OVERVIEW
+   ✓ Listed all system requirements including .NET 9 Desktop Runtime
+   ✓ Download link and verification command
+   ✓ Platform requirements (Windows 10/11, Server 2016+)
+
+6. RUN_MODE_FEATURE.txt
+   ✓ Updated SUPPORT section
+   ✓ Made .NET 9 Runtime verification the FIRST troubleshooting step
+   ✓ Download link and verification command
+
+================================================================================
+KEY INFORMATION ADDED
+================================================================================
+
+Download Link:
+https://dotnet.microsoft.com/download/dotnet/9.0
+
+What to Download:
+"Download .NET Desktop Runtime 9.0.x"
+
+Platform Options:
+- Windows x64 (64-bit)
+- Windows x86 (32-bit)
+
+Verification Command:
+dotnet --list-runtimes
+
+Expected Output:
+Microsoft.WindowsDesktop.App 9.0.x
+
+Why It's Needed:
+The application is built with .NET 9 and requires the Desktop Runtime
+to execute. Without it, the .exe will not start.
+
+================================================================================
+DOCUMENTATION STRUCTURE
+================================================================================
+
+All documentation now follows this hierarchy:
+
+1. .NET 9 Desktop Runtime (NEW - Step 0)
+   ↓
+2. NuGet Packages / Build (Step 1)
+   ↓
+3. Azure AD Setup (Step 2)
+   ↓
+4. Build Project (Step 3)
+   ↓
+5. Configure Service (Step 4)
+   ↓
+6. Install as Service (Step 5)
+   ↓
+7. Test (Step 6+)
+
+This ensures users install the runtime BEFORE attempting anything else.
+
+================================================================================
+USER VISIBILITY
+================================================================================
+
+The .NET 9 Runtime requirement is now prominently displayed in:
+
+✓ First section of README.md (under Prerequisites)
+✓ STEP 1 of README.txt (Quick Start Guide)
+✓ STEP 0 of SETUP_CHECKLIST.txt (before everything)
+✓ STEP 0 of PROJECT_COMPLETE.txt (Next Steps)
+✓ REQUIREMENTS section of PROJECT_NOTES.txt
+✓ First troubleshooting step in RUN_MODE_FEATURE.txt
+
+Users cannot miss this requirement!
+
+================================================================================
+CONSISTENCY
+================================================================================
+
+All documentation uses:
+✓ Same download link
+✓ Same verification command
+✓ Same expected output
+✓ Same terminology ("Desktop Runtime")
+✓ Same emphasis (CRITICAL, REQUIRED, WILL NOT RUN)
+✓ Same installation steps
+
+================================================================================
+TECHNICAL DETAILS
+================================================================================
+
+Runtime Name: Microsoft.WindowsDesktop.App
+Version: 9.0.x (latest patch)
+Platform: Windows
+Type: Desktop Runtime (includes ASP.NET Core Runtime)
+Architecture: x64 or x86
+
+Why Desktop Runtime and not just .NET Runtime:
+- Application uses Windows Forms (System tray GUI)
+- Requires Microsoft.WindowsDesktop.App
+- Regular .NET Runtime doesn't include Windows Forms support
+
+================================================================================
+VERIFICATION INSTRUCTIONS
+================================================================================
+
+Users can verify installation by:
+
+1. Open Command Prompt (cmd.exe)
+2. Run: dotnet --list-runtimes
+3. Look for: Microsoft.WindowsDesktop.App 9.0.x
+
+If not found:
+- Runtime is not installed
+- Application will not start
+- Download and install from link provided
+
+================================================================================
+ERROR PREVENTION
+================================================================================
+
+Without .NET 9 Desktop Runtime, users would see:
+- "This application requires the .NET Desktop Runtime 9.0.x"
+- "To run this application, install .NET Desktop Runtime"
+- Or the application simply won't start
+
+Now with clear documentation BEFORE they try to run it, users:
+✓ Know what they need
+✓ Know where to get it
+✓ Know how to verify it
+✓ Can install it before encountering errors
+
+================================================================================
+SUMMARY OF CHANGES
+================================================================================
+
+Files Modified: 6
+New Sections Added: 7
+Steps Renumbered: All setup steps (0-based now)
+Download Links Added: 6
+Verification Commands Added: 6
+
+Purpose: Ensure all users install .NET 9 Desktop Runtime before
+attempting to run the application, preventing startup failures
+and support requests.
+
+Result: Clear, consistent documentation that prevents the most
+common deployment issue (missing runtime).
+
+================================================================================
+COMPLETENESS CHECK
+================================================================================
+
+✓ Installation instructions provided
+✓ Download link in all relevant docs
+✓ Verification steps included
+✓ Platform requirements specified
+✓ Positioned prominently (STEP 0 or first prereq)
+✓ Emphasis used (CRITICAL, REQUIRED)
+✓ Troubleshooting updated
+✓ Consistent across all files
+
+All users will now see this requirement before attempting to run the
+application!
+
+================================================================================
+END OF UPDATE SUMMARY
+================================================================================

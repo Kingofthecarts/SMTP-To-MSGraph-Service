@@ -201,10 +201,14 @@ SUPPORT
 =======
 
 If you encounter issues:
-1. Check that ApplicationSettings section exists in config file
-2. Verify RunMode value is 0, 1, or 2
-3. Check logs for any startup errors
-4. Try deleting config file to regenerate with defaults
+1. Ensure .NET 9 Desktop Runtime is installed
+   - Download: https://dotnet.microsoft.com/download/dotnet/9.0
+   - Verify: dotnet --list-runtimes
+   - Should show: Microsoft.WindowsDesktop.App 9.0.x
+2. Check that ApplicationSettings section exists in config file
+3. Verify RunMode value is 0, 1, or 2
+4. Check logs for any startup errors
+5. Try deleting config file to regenerate with defaults
 
 
 VERSION

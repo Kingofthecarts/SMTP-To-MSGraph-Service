@@ -2,7 +2,23 @@
 SMTP TO MS GRAPH RELAY - SETUP CHECKLIST
 ================================================================================
 
-□ STEP 1: INSTALL NUGET PACKAGES
+□ STEP 0: INSTALL .NET 9 DESKTOP RUNTIME (REQUIRED!)
+========================================================
+□ Download .NET 9 Desktop Runtime from:
+  https://dotnet.microsoft.com/download/dotnet/9.0
+  
+□ Click "Download .NET Desktop Runtime 9.0.x"
+□ Choose Windows x64 or x86 (match your system architecture)
+□ Run the installer
+□ Restart computer if prompted
+□ Verify installation:
+  Open Command Prompt and run: dotnet --list-runtimes
+  You should see: Microsoft.WindowsDesktop.App 9.0.x
+  
+NOTE: The application WILL NOT RUN without this runtime installed!
+
+
+□ STEP 1: INSTALL NUGET PACKAGES (FOR DEVELOPERS)
 ================================
 Open Visual Studio > Right-click project > Manage NuGet Packages > Browse
 

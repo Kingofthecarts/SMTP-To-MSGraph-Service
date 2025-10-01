@@ -86,6 +86,11 @@ namespace SMTP_Service.UI
             InitializeTestEmailTab(testEmailTab);
             tabControl.TabPages.Add(testEmailTab);
 
+            // Changelog Tab
+            var changelogTab = new TabPage("Changelog");
+            InitializeChangelogTab(changelogTab);
+            tabControl.TabPages.Add(changelogTab);
+
             this.Controls.Add(tabControl);
 
             // Bottom panel with buttons
@@ -432,6 +437,164 @@ namespace SMTP_Service.UI
                 ForeColor = System.Drawing.Color.Gray
             };
             tab.Controls.Add(lblNote);
+        }
+
+        private void InitializeChangelogTab(TabPage tab)
+        {
+            // Use RichTextBox for better formatting control
+            var rtbChangelog = new RichTextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = RichTextBoxScrollBars.Vertical,
+                Dock = DockStyle.Fill,
+                Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point),
+                BackColor = System.Drawing.Color.White,
+                BorderStyle = BorderStyle.None,
+                WordWrap = true
+            };
+
+            // Try to load and format changelog from docs folder
+            try
+            {
+                var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                var changelogPath = Path.Combine(baseDirectory, "docs", "CHANGELOG.txt");
+                
+                if (File.Exists(changelogPath))
+                {
+                    var changelogText = File.ReadAllText(changelogPath);
+                    FormatChangelog(rtbChangelog, changelogText);
+                    rtbChangelog.Select(0, 0); // Deselect and scroll to top
+                }
+                else
+                {
+                    rtbChangelog.Text = "CHANGELOG.txt not found.\n\n" +
+                                       $"Expected location: {changelogPath}\n\n" +
+                                       "The changelog file should be located in the 'docs' folder " +
+                                       "next to the application executable.";
+                    rtbChangelog.SelectionColor = System.Drawing.Color.Red;
+                }
+            }
+            catch (Exception ex)
+            {
+                rtbChangelog.Text = $"Error loading changelog:\n\n{ex.Message}";
+                rtbChangelog.SelectionColor = System.Drawing.Color.Red;
+            }
+
+            tab.Controls.Add(rtbChangelog);
+
+            // Add a bottom panel with a refresh button
+            var bottomPanel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 40,
+                BackColor = System.Drawing.Color.WhiteSmoke
+            };
+
+            var btnRefresh = new Button
+            {
+                Text = "Refresh Changelog",
+                Location = new System.Drawing.Point(10, 5),
+                Size = new System.Drawing.Size(120, 30)
+            };
+            btnRefresh.Click += (s, e) =>
+            {
+                try
+                {
+                    var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                    var changelogPath = Path.Combine(baseDirectory, "docs", "CHANGELOG.txt");
+                    
+                    if (File.Exists(changelogPath))
+                    {
+                        var changelogText = File.ReadAllText(changelogPath);
+                        rtbChangelog.Clear();
+                        FormatChangelog(rtbChangelog, changelogText);
+                        rtbChangelog.Select(0, 0);
+                        MessageBox.Show("Changelog refreshed successfully!", "Success", 
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"CHANGELOG.txt not found at:\n{changelogPath}", "File Not Found", 
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error refreshing changelog:\n\n{ex.Message}", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            bottomPanel.Controls.Add(btnRefresh);
+            tab.Controls.Add(bottomPanel);
+        }
+
+        private void FormatChangelog(RichTextBox rtb, string text)
+        {
+            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            
+            foreach (var line in lines)
+            {
+                // Title header (centered text with "CHANGELOG")
+                if (line.Contains("SMTP TO MS GRAPH RELAY") || line.Contains("CHANGELOG") && line.Length < 50 && !line.StartsWith("For detailed"))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
+                    rtb.SelectionColor = System.Drawing.Color.DarkBlue;
+                    rtb.AppendText(line + "\n");
+                    continue;
+                }
+                
+                // Version headers (VERSION X.X.X)
+                if (line.StartsWith("VERSION "))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+                    rtb.SelectionColor = System.Drawing.Color.DarkGreen;
+                    rtb.AppendText("\n" + line + "\n");
+                    continue;
+                }
+                
+                // Section headers (NEW FEATURES:, BUG FIXES:, etc.)
+                if (line.EndsWith(":") && line.Length < 50 && line == line.ToUpper() && !line.StartsWith(" "))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+                    rtb.SelectionColor = System.Drawing.Color.DarkOrange;
+                    rtb.AppendText("\n" + line + "\n");
+                    continue;
+                }
+                
+                // Divider lines (===)
+                if (line.Contains("======"))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular);
+                    rtb.SelectionColor = System.Drawing.Color.LightGray;
+                    rtb.AppendText(line + "\n");
+                    continue;
+                }
+                
+                // Bullet points (items starting with •)
+                if (line.TrimStart().StartsWith("•"))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
+                    rtb.SelectionColor = System.Drawing.Color.Black;
+                    rtb.AppendText(line + "\n");
+                    continue;
+                }
+                
+                // Sub-items (indented lines after bullets)
+                if (line.StartsWith("    ") && !line.TrimStart().StartsWith("•"))
+                {
+                    rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Italic);
+                    rtb.SelectionColor = System.Drawing.Color.DarkSlateGray;
+                    rtb.AppendText(line + "\n");
+                    continue;
+                }
+                
+                // Regular text
+                rtb.SelectionFont = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular);
+                rtb.SelectionColor = System.Drawing.Color.Black;
+                rtb.AppendText(line + "\n");
+            }
         }
 
         private void LoadConfiguration()

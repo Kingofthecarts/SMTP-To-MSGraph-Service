@@ -8,6 +8,18 @@ PROJECT OVERVIEW
 Windows service that acts as an SMTP relay, receiving emails via SMTP protocol
 on port 25 and forwarding them through Microsoft Graph API to Microsoft 365.
 
+REQUIREMENTS
+============
+• Windows 10/11 or Windows Server 2016+
+• .NET 9 Desktop Runtime (REQUIRED for end users)
+  Download: https://dotnet.microsoft.com/download/dotnet/9.0
+  - Select "Download .NET Desktop Runtime 9.0.x"
+  - Install Microsoft.WindowsDesktop.App 9.0.x
+  - Verify: dotnet --list-runtimes
+• Administrator privileges (for port 25)
+• Microsoft 365 subscription
+• Azure AD App Registration with Mail.Send permission
+
 TECHNOLOGY STACK
 ================
 • Framework: .NET 9.0

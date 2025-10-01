@@ -27,8 +27,25 @@ Before running this application, you need:
 
 ✓ Windows computer (Windows 10/11 or Windows Server)
 ✓ Administrator privileges (required for port 25)
+✓ .NET 9 Desktop Runtime (REQUIRED - see below)
 ✓ Microsoft 365 subscription
 ✓ Azure AD App Registration with Mail.Send permission
+
+**CRITICAL: Install .NET 9 Desktop Runtime**
+
+The application requires .NET 9 Desktop Runtime to run.
+
+Download from: https://dotnet.microsoft.com/download/dotnet/9.0
+
+1. Click "Download .NET Desktop Runtime 9.0.x"
+2. Choose Windows x64 or x86 (match your system)
+3. Run the installer
+4. Restart your computer if prompted
+
+To verify installation, open Command Prompt and run:
+  dotnet --list-runtimes
+
+You should see: Microsoft.WindowsDesktop.App 9.0.x
 
 If you don't have an Azure AD app set up yet, see "AZURE AD SETUP" below.
 
