@@ -1,5 +1,158 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 1.1.4 - October 1, 2025
+
+### LOGGING IMPROVEMENTS
+
+- **Enhanced Application Start Logging**
+  - Added prominent visual separator when application starts
+  - Clear "APPLICATION START" banner with double-line borders
+  - Two blank lines before separator for better visibility between sessions
+  - Easier to identify new application sessions in log files
+  - Applied to both tray mode and service/console mode
+  - Makes log file analysis much easier when reviewing multiple sessions
+
+### USER INTERFACE REFINEMENTS
+
+- **Confirmed and Documented Existing UI Features**
+  - Test Connection button correctly placed only on MS Graph Settings tab
+  - Exit Application button with confirmation dialog working as expected
+  - Save button properly disabled until changes are made
+  - Cancel/Close button intelligently switches based on unsaved changes
+  - Show File Locations properly located in Application Settings tab
+  - All change tracking working correctly across all tabs
+
+---
+
+## VERSION 1.1.3 - October 1, 2025
+
+### USER INTERFACE IMPROVEMENTS
+
+- **Enhanced Configuration Form UI**
+  - Moved "Test Connection" button to MS Graph Settings tab (from bottom panel)
+  - Test button now contextually placed where it's most relevant
+  - Improved button layout with better spacing
+  
+- **Smart Save Button**
+  - Save button now disabled by default
+  - Automatically enables only when changes are made
+  - Provides visual feedback about unsaved changes
+  - Resets to disabled state after successful save
+  
+- **Intelligent Cancel/Close Button**
+  - Dynamically changes between "Close" and "Cancel" based on state
+  - Shows "Close" when no unsaved changes exist
+  - Changes to "Cancel" when unsaved changes are detected
+  - Warns user about unsaved changes before closing
+  - Requires confirmation to discard changes
+  
+- **New Exit Application Button**
+  - Added dedicated "Exit Application" button
+  - Terminates the entire SMTP service process
+  - Confirmation dialog prevents accidental exits
+  - Properly logs exit event before termination
+  
+- **Comprehensive Change Tracking**
+  - All form controls monitored for changes
+  - Tracks: SMTP settings, Graph settings, Queue settings, Application settings
+  - User additions/removals trigger change detection
+  - State persists across tab switches
+  
+- **Relocated "Show File Locations" Feature**
+  - Moved from system tray menu to Application Settings tab
+  - Better organization with related application settings
+  - Cleaner tray menu with fewer items
+
+### STARTUP IMPROVEMENTS
+
+- **Enhanced Log Separators**
+  - Added prominent visual separator when application starts
+  - Clear "APPLICATION START" banner in logs
+  - Two blank lines before separator for better visibility
+  - Easier to identify new application sessions in log files
+  - Applied to both tray mode and service/console mode
+
+### CODE QUALITY
+
+- **Improved state management**
+  - Better tracking of form dirty state
+  - Proper event handler wiring after initial load
+  - Clean separation of concerns for change detection
+
+---
+
+## VERSION 1.1.2 - October 1, 2025
+
+### CRITICAL FIX 🔴
+
+- **Fixed configuration file being overwritten during builds**
+  - Renamed source config to `smtp-config.template.json` (reference only)
+  - Added explicit build exclusions in .csproj
+  - Enhanced ConfigurationManager with overwrite protection
+  - Added automatic backup system before every save
+  - Added verbose logging for config operations
+  - Config file now NEVER overwritten once it exists
+  - Added .gitignore to protect actual config from source control
+  
+### NEW FEATURES
+
+- **Automatic Configuration Backup**
+  - Creates `.backup` file before every save
+  - Allows recovery from save errors or corruption
+  - Overwrites previous backup each time
+  
+- **Enhanced Configuration Logging**
+  - Console shows when config is created vs loaded
+  - Backup creation is logged
+  - Save operations are confirmed
+  - Error handling improved with helpful messages
+
+### DOCUMENTATION
+
+- **Added config/README.md**
+  - Comprehensive explanation of config protection system
+  - Troubleshooting guide for config issues
+  - Security notes and best practices
+  
+- **Added config/.gitignore**
+  - Protects actual config from being committed to source control
+  - Keeps template file for reference
+
+---
+
+## VERSION 1.1.1 - October 1, 2025
+
+### IMPROVEMENTS
+
+- **Enhanced default run mode behavior**
+  - Console + Tray mode (RunMode 1) is now the default when config is missing
+  - Improved run mode display with clear indication of DEFAULT mode
+  - Added comprehensive run mode logging to log files
+  - Enhanced console output with section headers for run mode
+  - Run mode source is now clearly shown (config file vs command line override)
+  
+- **Improved startup logging**
+  - Added separator lines in log file for better readability
+  - Consistent run mode information in both console and log outputs
+  - Clear indication of configuration source
+
+### CODE QUALITY
+
+- **Cleaned up Program.cs**
+  - Removed duplicate run mode determination code
+  - Consolidated run mode display logic
+  - Improved code organization and readability
+
+### DOCUMENTATION
+
+- **Added RUN_MODE_DEFAULT_FEATURE.txt**
+  - Comprehensive documentation of default behavior
+  - Testing scenarios for all run modes
+  - Configuration priority explanation
+  - Troubleshooting guide
+
+---
+
 ## VERSION 1.1.0 - October 1, 2025
 
 ### NEW FEATURES

@@ -30,15 +30,24 @@ namespace SMTP_Service.Managers
 
         public AppConfig LoadConfiguration()
         {
+            // CRITICAL: Only create new config if file doesn't exist
             if (!File.Exists(_configPath))
             {
+                Console.WriteLine($"Configuration file not found at: {_configPath}");
+                Console.WriteLine("Creating new configuration with defaults...");
+                
                 _config = CreateDefaultConfiguration();
                 SaveConfiguration(_config);
+                
+                Console.WriteLine("New configuration created successfully.");
+                Console.WriteLine("Please configure your SMTP and MS Graph settings.");
                 return _config;
             }
 
+            // Load existing configuration
             try
             {
+                Console.WriteLine($"Loading configuration from: {_configPath}");
                 var json = File.ReadAllText(_configPath);
                 var config = JsonSerializer.Deserialize<AppConfig>(json);
                 
@@ -47,15 +56,20 @@ namespace SMTP_Service.Managers
                     // Decrypt sensitive fields
                     DecryptSensitiveData(config);
                     _config = config;
+                    Console.WriteLine("Configuration loaded successfully.");
                     return config;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading configuration: {ex.Message}");
+                Console.WriteLine($"ERROR loading configuration: {ex.Message}");
+                Console.WriteLine("WARNING: Using existing configuration as-is (not overwriting)");
             }
 
+            // If we get here, there was an error but file exists
+            // DO NOT overwrite - return default but don't save
             _config = CreateDefaultConfiguration();
+            Console.WriteLine("WARNING: Could not load config, but file exists. Not overwriting!");
             return _config;
         }
 
@@ -63,6 +77,14 @@ namespace SMTP_Service.Managers
         {
             try
             {
+                // Create backup of existing config before saving
+                if (File.Exists(_configPath))
+                {
+                    var backupPath = _configPath + ".backup";
+                    File.Copy(_configPath, backupPath, true);
+                    Console.WriteLine($"Configuration backup created: {backupPath}");
+                }
+                
                 // Create a copy to avoid modifying the original
                 var configToSave = CloneConfig(config);
                 
@@ -78,10 +100,11 @@ namespace SMTP_Service.Managers
                 File.WriteAllText(_configPath, json);
                 
                 _config = config;
+                Console.WriteLine("Configuration saved successfully.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving configuration: {ex.Message}");
+                Console.WriteLine($"ERROR saving configuration: {ex.Message}");
                 throw;
             }
         }
@@ -104,7 +127,7 @@ namespace SMTP_Service.Managers
             {
                 ApplicationSettings = new ApplicationSettings
                 {
-                    RunMode = 0 // Default: Service/Console mode
+                    RunMode = 1 // Default: Console with Tray mode
                 },
                 SmtpSettings = new SmtpSettings
                 {

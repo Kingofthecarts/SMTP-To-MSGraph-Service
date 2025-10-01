@@ -20,7 +20,6 @@ namespace SMTP_Service.UI
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
-            var pathsMenuItem = new ToolStripMenuItem("Show File Locations", null, ShowFilePaths);
             var separatorItem = new ToolStripSeparator();
             var startServiceMenuItem = new ToolStripMenuItem("Start Service", null, StartService);
             var stopServiceMenuItem = new ToolStripMenuItem("Stop Service", null, StopService);
@@ -31,7 +30,6 @@ namespace SMTP_Service.UI
             _contextMenu.Items.Add(configMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
-            _contextMenu.Items.Add(pathsMenuItem);
             _contextMenu.Items.Add(separatorItem);
             _contextMenu.Items.Add(startServiceMenuItem);
             _contextMenu.Items.Add(stopServiceMenuItem);
@@ -150,44 +148,6 @@ namespace SMTP_Service.UI
                     "Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
-            }
-        }
-
-        private void ShowFilePaths(object? sender, EventArgs e)
-        {
-            try
-            {
-                var configManager = new Managers.ConfigurationManager();
-                var config = configManager.LoadConfiguration();
-                
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                var configPath = Path.Combine(baseDir, "config", "smtp-config.json");
-                var logPath = config.LogSettings.LogFilePath;
-                var logDir = Path.GetDirectoryName(logPath) ?? Path.Combine(baseDir, "logs");
-                
-                var message = "Application File Locations:\n\n" +
-                              $"Application Directory:\n{baseDir}\n\n" +
-                              $"Configuration File:\n{configPath}\n" +
-                              $"Exists: {File.Exists(configPath)}\n\n" +
-                              $"Log Directory:\n{logDir}\n" +
-                              $"Exists: {Directory.Exists(logDir)}\n\n" +
-                              $"Log File:\n{logPath}\n" +
-                              $"Exists: {File.Exists(logPath)}\n\n" +
-                              $"Click OK to open the application directory.";
-                
-                MessageBox.Show(message, "File Locations", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                
-                // Open the application directory
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = baseDir,
-                    UseShellExecute = true,
-                    Verb = "open"
-                });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error showing file paths: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

@@ -43,6 +43,10 @@ namespace SMTP_Service.UI
         private Button btnSave = null!;
         private Button btnCancel = null!;
         private Button btnTest = null!;
+        private Button btnExit = null!;
+
+        // Track changes
+        private bool _hasUnsavedChanges = false;
 
         public ConfigurationForm()
         {
@@ -103,30 +107,31 @@ namespace SMTP_Service.UI
             btnSave = new Button
             {
                 Text = "Save",
-                Location = new System.Drawing.Point(300, 10),
-                Size = new System.Drawing.Size(80, 30)
+                Location = new System.Drawing.Point(250, 10),
+                Size = new System.Drawing.Size(80, 30),
+                Enabled = false // Disabled until changes are made
             };
             btnSave.Click += BtnSave_Click;
 
             btnCancel = new Button
             {
-                Text = "Cancel",
-                Location = new System.Drawing.Point(390, 10),
+                Text = "Close",
+                Location = new System.Drawing.Point(340, 10),
                 Size = new System.Drawing.Size(80, 30)
             };
-            btnCancel.Click += (s, e) => this.Close();
+            btnCancel.Click += BtnCancel_Click;
 
-            btnTest = new Button
+            btnExit = new Button
             {
-                Text = "Test Connection",
-                Location = new System.Drawing.Point(480, 10),
-                Size = new System.Drawing.Size(100, 30)
+                Text = "Exit Application",
+                Location = new System.Drawing.Point(430, 10),
+                Size = new System.Drawing.Size(120, 30)
             };
-            btnTest.Click += BtnTest_Click;
+            btnExit.Click += BtnExit_Click;
 
             bottomPanel.Controls.Add(btnSave);
             bottomPanel.Controls.Add(btnCancel);
-            bottomPanel.Controls.Add(btnTest);
+            bottomPanel.Controls.Add(btnExit);
 
             this.Controls.Add(bottomPanel);
         }
@@ -237,6 +242,18 @@ namespace SMTP_Service.UI
 
             y += 60;
 
+            // Test Connection Button
+            btnTest = new Button
+            {
+                Text = "Test Connection",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(130, 35)
+            };
+            btnTest.Click += BtnTest_Click;
+            tab.Controls.Add(btnTest);
+
+            y += 50;
+
             // Instructions
             var lblInstructions = new Label
             {
@@ -244,9 +261,10 @@ namespace SMTP_Service.UI
                        "1. Register an app in Azure AD\n" +
                        "2. Grant Mail.Send permission\n" +
                        "3. Create a client secret\n" +
-                       "4. Copy Tenant ID, Client ID, and Secret here",
+                       "4. Copy Tenant ID, Client ID, and Secret here\n\n" +
+                       "Use 'Test Connection' above to verify your configuration.",
                 Location = new System.Drawing.Point(20, y),
-                Size = new System.Drawing.Size(500, 100),
+                Size = new System.Drawing.Size(500, 120),
                 AutoSize = false
             };
             tab.Controls.Add(lblInstructions);
@@ -305,6 +323,18 @@ namespace SMTP_Service.UI
             tab.Controls.Add(lblRunModeInfo);
 
             y += 120;
+
+            // File Locations Button
+            var btnShowPaths = new Button
+            {
+                Text = "Show File Locations",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(150, 30)
+            };
+            btnShowPaths.Click += BtnShowPaths_Click;
+            tab.Controls.Add(btnShowPaths);
+
+            y += 50;
 
             // Queue Settings Section
             var lblQueueHeader = new Label 
@@ -677,6 +707,78 @@ namespace SMTP_Service.UI
 
             // Load Application settings
             cmbRunMode.SelectedIndex = _config.ApplicationSettings.RunMode;
+
+            // Wire up change tracking after loading initial values
+            WireUpChangeTracking();
+        }
+
+        private void WireUpChangeTracking()
+        {
+            // SMTP Settings
+            txtSmtpPort.TextChanged += (s, e) => MarkAsChanged();
+            chkRequireAuth.CheckedChanged += (s, e) => MarkAsChanged();
+            txtUsername.TextChanged += (s, e) => MarkAsChanged();
+            txtPassword.TextChanged += (s, e) => MarkAsChanged();
+
+            // Graph Settings
+            txtTenantId.TextChanged += (s, e) => MarkAsChanged();
+            txtClientId.TextChanged += (s, e) => MarkAsChanged();
+            txtClientSecret.TextChanged += (s, e) => MarkAsChanged();
+            txtSenderEmail.TextChanged += (s, e) => MarkAsChanged();
+
+            // Queue Settings
+            numMaxRetry.ValueChanged += (s, e) => MarkAsChanged();
+            numRetryDelay.ValueChanged += (s, e) => MarkAsChanged();
+
+            // Application Settings
+            cmbRunMode.SelectedIndexChanged += (s, e) => MarkAsChanged();
+        }
+
+        private void MarkAsChanged()
+        {
+            if (!_hasUnsavedChanges)
+            {
+                _hasUnsavedChanges = true;
+                btnSave.Enabled = true;
+                btnCancel.Text = "Cancel";
+            }
+        }
+
+        private void BtnCancel_Click(object? sender, EventArgs e)
+        {
+            if (_hasUnsavedChanges)
+            {
+                var result = MessageBox.Show(
+                    "You have unsaved changes. Are you sure you want to close without saving?",
+                    "Unsaved Changes",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Yes)
+                {
+                    this.Close();
+                }
+            }
+            else
+            {
+                this.Close();
+            }
+        }
+
+        private void BtnExit_Click(object? sender, EventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Are you sure you want to exit the application?\n\nThis will terminate the SMTP service.",
+                "Exit Application",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                Log.Information("User requested application exit from Configuration form");
+                Log.CloseAndFlush();
+                Environment.Exit(0);
+            }
         }
 
         private void BtnAddUser_Click(object? sender, EventArgs e)
@@ -696,6 +798,8 @@ namespace SMTP_Service.UI
             lstUsers.Items.Add(txtUsername.Text.Trim());
             txtUsername.Clear();
             txtPassword.Clear();
+            
+            MarkAsChanged();
         }
 
         private void BtnRemoveUser_Click(object? sender, EventArgs e)
@@ -705,6 +809,43 @@ namespace SMTP_Service.UI
                 var username = lstUsers.SelectedItem?.ToString();
                 _config.SmtpSettings.Credentials.RemoveAll(c => c.Username == username);
                 lstUsers.Items.RemoveAt(lstUsers.SelectedIndex);
+                
+                MarkAsChanged();
+            }
+        }
+
+        private void BtnShowPaths_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var configPath = Path.Combine(baseDir, "config", "smtp-config.json");
+                var logPath = _config.LogSettings.LogFilePath;
+                var logDir = Path.GetDirectoryName(logPath) ?? Path.Combine(baseDir, "logs");
+                
+                var message = "Application File Locations:\n\n" +
+                              $"Application Directory:\n{baseDir}\n\n" +
+                              $"Configuration File:\n{configPath}\n" +
+                              $"Exists: {File.Exists(configPath)}\n\n" +
+                              $"Log Directory:\n{logDir}\n" +
+                              $"Exists: {Directory.Exists(logDir)}\n\n" +
+                              $"Log File:\n{logPath}\n" +
+                              $"Exists: {File.Exists(logPath)}\n\n" +
+                              $"Click OK to open the application directory.";
+                
+                MessageBox.Show(message, "File Locations", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                
+                // Open the application directory
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = baseDir,
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error showing file paths: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -735,6 +876,11 @@ namespace SMTP_Service.UI
 
                 // Save configuration
                 _configManager.SaveConfiguration(_config);
+
+                // Reset change tracking
+                _hasUnsavedChanges = false;
+                btnSave.Enabled = false;
+                btnCancel.Text = "Close";
 
                 MessageBox.Show("Configuration saved successfully!\n\nNote: You may need to restart the service for changes to take effect.", 
                     "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);

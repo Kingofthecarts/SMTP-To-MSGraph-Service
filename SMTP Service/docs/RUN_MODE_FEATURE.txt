@@ -16,16 +16,17 @@ mode when launched.
 RUN MODE OPTIONS
 ================
 
-0 = Service/Console Mode (Default)
+0 = Service/Console Mode
    - Shows console window with real-time logs
    - Good for debugging and troubleshooting
    - Best when you want to see what's happening
 
-1 = Console with Tray Icon
+1 = Console with Tray Icon (DEFAULT) ⭐
    - Console window with logs + System tray icon
    - Best of both worlds
    - Great for monitoring and quick access to settings
-   - Recommended for development and testing
+   - Recommended for most users
+   - Default when config is missing or on first run
 
 2 = Tray Only
    - System tray icon only, no console window
@@ -78,7 +79,7 @@ FILES MODIFIED
 
 2. Managers/ConfigurationManager.cs
    - Updated CreateDefaultConfiguration() to include ApplicationSettings
-   - Default RunMode = 0 (Service/Console mode)
+   - Default RunMode = 1 (Console + Tray mode)
 
 3. Program.cs
    - Reads configuration at startup to check RunMode setting
@@ -181,8 +182,8 @@ Test the feature:
 BACKWARD COMPATIBILITY
 ======================
 
-✓ Default RunMode = 0 (same behavior as before)
-✓ Existing config files automatically get ApplicationSettings section
+✓ Default RunMode = 1 for new installations (best user experience)
+✓ Existing config files keep their RunMode setting
 ✓ Command line arguments work exactly as before
 ✓ No breaking changes to existing functionality
 
@@ -215,6 +216,7 @@ VERSION
 =======
 
 Feature added: 2025-09-30
-Compatible with: v1.0.0+
+Default updated to RunMode 1: 2025-10-01
+Compatible with: v1.1.0+
 
 ================================================================================

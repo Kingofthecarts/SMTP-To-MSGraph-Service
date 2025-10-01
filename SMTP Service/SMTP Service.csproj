@@ -9,6 +9,12 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
+  <!-- Post-build event to copy CHANGELOG.md to docs folder -->
+  <Target Name="CopyChangelogToDocsFolder" AfterTargets="Build">
+    <MakeDir Directories="$(OutputPath)docs" />
+    <Copy SourceFiles="docs\CHANGELOG.md" DestinationFolder="$(OutputPath)docs" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <Compile Remove="config\**" />
     <Compile Remove="logs\**" />
@@ -20,8 +26,11 @@
     <None Remove="logs\**" />
   </ItemGroup>
 
+  <!-- Explicitly include template as documentation only (never copy) -->
+
   <ItemGroup>
     <None Remove="install-service.bat" />
+    <None Remove="docs\**" />
   </ItemGroup>
 
   <ItemGroup>

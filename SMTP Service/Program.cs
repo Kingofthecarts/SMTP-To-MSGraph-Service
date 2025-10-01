@@ -14,7 +14,7 @@ var initialConfig = initialConfigManager.LoadConfiguration();
 bool runAsTray = args.Contains("--tray");
 bool runAsConsoleWithTray = args.Contains("--console");
 
-// If no command line args, use config setting
+// If no command line args, use config setting (default is 1 if config is missing)
 if (!runAsTray && !runAsConsoleWithTray)
 {
     switch (initialConfig.ApplicationSettings.RunMode)
@@ -28,6 +28,47 @@ if (!runAsTray && !runAsConsoleWithTray)
         // case 0 or default: stay as service/console mode
     }
 }
+
+// Determine the final run mode for display and logging
+string runModeName;
+string runModeDescription;
+string runModeSource;
+int finalRunMode;
+
+if (runAsTray)
+{
+    runModeName = "Tray Only";
+    runModeDescription = "RunMode 2: System tray icon only";
+    finalRunMode = 2;
+}
+else if (runAsConsoleWithTray)
+{
+    runModeName = "Console + Tray";
+    runModeDescription = "RunMode 1: Console with system tray icon (DEFAULT)";
+    finalRunMode = 1;
+}
+else
+{
+    runModeName = "Service/Console";
+    runModeDescription = "RunMode 0: Service or console mode";
+    finalRunMode = 0;
+}
+
+// Determine source of run mode
+if (args.Contains("--tray") || args.Contains("--console"))
+{
+    runModeSource = "Command line argument (overriding config)";
+}
+else
+{
+    runModeSource = $"Configuration file (RunMode={initialConfig.ApplicationSettings.RunMode})";
+}
+
+// Display run mode information
+Console.WriteLine($"\n========== RUN MODE: {runModeName} ==========");
+Console.WriteLine($"{runModeDescription}");
+Console.WriteLine($"Source: {runModeSource}");
+Console.WriteLine("==========================================\n");
 
 // Check if running as tray application
 if (runAsTray)
@@ -59,12 +100,20 @@ if (runAsTray)
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
         .CreateLogger();
     
+    Log.Information("\n\n");
+    Log.Information("================================================================================");
+    Log.Information("===                        APPLICATION START                                ===");
+    Log.Information("================================================================================");
     Log.Information("SMTP to Graph Relay - Tray Application Started");
+    Log.Information($"Run Mode: {runModeName} ({runModeDescription})");
+    Log.Information($"Source: {runModeSource}");
+    Log.Information("================================================================================");
     
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
     Application.Run(new TrayApplicationContext());
     
+    Log.Information("Application shutting down");
     Log.CloseAndFlush();
     return;
 }
@@ -80,7 +129,7 @@ if (showTray)
 }
 else
 {
-    Console.WriteLine("Starting in SERVICE mode...");
+    Console.WriteLine("Starting in SERVICE/CONSOLE mode...");
 }
 
 Console.WriteLine($"Current directory: {Directory.GetCurrentDirectory()}");
@@ -89,7 +138,6 @@ Console.WriteLine("============================================");
 Console.WriteLine("Press Ctrl+C to stop the service");
 Console.WriteLine("============================================\n");
 
-// Otherwise, run as service
 // Initialize Configuration Manager
 var configManager = new SMTP_Service.Managers.ConfigurationManager();
 var config = configManager.LoadConfiguration();
@@ -118,7 +166,14 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     Console.WriteLine("Configuring Serilog...");
+    Log.Information("\n\n");
+    Log.Information("================================================================================");
+    Log.Information("===                        APPLICATION START                                ===");
+    Log.Information("================================================================================");
     Log.Information("Starting SMTP to MS Graph Relay Service");
+    Log.Information($"Run Mode: {runModeName} ({runModeDescription})");
+    Log.Information($"Source: {runModeSource}");
+    Log.Information("================================================================================");
     Log.Information($"SMTP Port: {config.SmtpSettings.Port}");
     Log.Information($"Authentication Required: {config.SmtpSettings.RequireAuthentication}");
     Log.Information($"Configured Users: {config.SmtpSettings.Credentials.Count}");

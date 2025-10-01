@@ -122,28 +122,77 @@ New-NetFirewallRule -DisplayName "SMTP Relay" -Direction Inbound -Protocol TCP -
 
 The application supports three different run modes:
 
-1. **Service/Console Mode (Default)** - Shows console window with logs
-2. **Console + Tray Mode** - Console logs + system tray icon (best for monitoring)
-3. **Tray Only Mode** - System tray icon only (minimal interface)
+### Available Modes
 
-### Setting the Default Run Mode
+0. **Service/Console Mode** - Shows console window with logs (no tray icon)
+1. **Console + Tray Mode (DEFAULT)** ⭐ - Console logs + system tray icon (best for monitoring)
+2. **Tray Only Mode** - System tray icon only (minimal interface)
 
-You can configure your preferred run mode in the GUI:
+**Default Behavior**: When the configuration file is missing or on first run, the application automatically defaults to **Console + Tray mode (RunMode 1)** for the best user experience.
+
+### Setting Your Preferred Run Mode
+
+You can configure your preferred run mode in three ways:
+
+#### Method 1: Configuration File (Persistent)
 
 1. Open configuration: Run `"SMTP Service.exe" --tray` or double-click the tray icon
 2. Go to the **Application Settings** tab
-3. Select your preferred **Default Run Mode**
+3. Select your preferred **Default Run Mode**:
+   - **0** = Service/Console mode
+   - **1** = Console + Tray mode (recommended)
+   - **2** = Tray Only mode
 4. Click **Save**
 
-The application will now start in your chosen mode automatically. Command line arguments will override this setting:
+The application will start in your chosen mode automatically.
+
+#### Method 2: Command Line Arguments (One-Time Override)
+
+Command line arguments override the configuration file setting:
 
 ```cmd
-# Override to run in tray-only mode
+# Force tray-only mode (ignores config setting)
 "SMTP Service.exe" --tray
 
-# Override to run in console + tray mode
+# Force console + tray mode (ignores config setting)
 "SMTP Service.exe" --console
 ```
+
+#### Method 3: Direct JSON Edit
+
+Edit `config\smtp-config.json`:
+
+```json
+{
+  "ApplicationSettings": {
+    "RunMode": 1
+  },
+  ...
+}
+```
+
+### Run Mode Information Display
+
+When the application starts, it displays the active run mode:
+
+**Console Output:**
+```
+========== RUN MODE: Console + Tray ==========
+RunMode 1: Console with system tray icon (DEFAULT)
+Source: Configuration file (RunMode=1)
+==========================================
+```
+
+**Log File Output:**
+```
+[INF] ========================================
+[INF] SMTP to Graph Relay - Service Started
+[INF] Run Mode: Console + Tray (RunMode 1: Console with system tray icon (DEFAULT))
+[INF] Source: Configuration file (RunMode=1)
+[INF] ========================================
+```
+
+This helps with troubleshooting and verifying the application is running in your intended mode.
 
 ## Usage
 
@@ -196,6 +245,17 @@ Send-MailMessage -SmtpServer localhost -Port 25 -From "sender@domain.com" -To "r
 ```
 
 ## Configuration Files
+
+### Configuration Protection 🛡️
+
+**Your configuration file is protected and will NEVER be overwritten by builds.**
+
+The application uses a template-based system:
+- `smtp-config.template.json` - Reference template (in source code, never copied)
+- `smtp-config.json` - Your actual config (created on first run, always protected)
+- `smtp-config.json.backup` - Automatic backup (created before each save)
+
+See `config/README.md` for complete details on the protection system.
 
 ### smtp-config.json
 

@@ -11,8 +11,8 @@ namespace SMTP_Service.Models
 
     public class ApplicationSettings
     {
-        // 0 = Default (Service/Console mode), 1 = Console with Tray, 2 = Tray only
-        public int RunMode { get; set; } = 0;
+        // 0 = Service/Console mode, 1 = Console with Tray (DEFAULT), 2 = Tray only
+        public int RunMode { get; set; } = 1;
     }
 
     public class SmtpSettings
