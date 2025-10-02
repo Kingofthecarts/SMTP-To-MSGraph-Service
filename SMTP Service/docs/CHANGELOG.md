@@ -1,5 +1,27 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 1.4.1 - October 2, 2025
+
+**Statistics Tracking & User Management**
+
+Added comprehensive email statistics tracking and reorganized user management. Track total successful/failed emails globally and per-user, with support for both authenticated users and IP addresses. Authentication is now optional by default, allowing both authenticated and unauthenticated connections.
+
+**Key Changes:**
+- Added Statistics tab showing global and per-user email metrics
+- Track successful/failed email counts with timestamps
+- Display current queue count in statistics
+- Per-user statistics show authentication status (Yes/No)
+- Moved user management to dedicated Users tab
+- Authentication now optional: when disabled, accepts both authenticated and unauthenticated connections
+- IP address tracking for unauthenticated connections
+- Statistics persist in stats/statistics.json
+
+**Authentication Behavior:**
+- Require Authentication ENABLED: Only authenticated users can send
+- Require Authentication DISABLED: Both authenticated and unauthenticated allowed (tracks by username or IP)
+
+---
+
 ## VERSION 1.3.0 - October 1, 2025
 
 **🔥 CRITICAL FIX: Email Encoding & MIME Support**
