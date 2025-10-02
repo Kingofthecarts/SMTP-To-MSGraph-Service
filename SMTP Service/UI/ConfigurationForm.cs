@@ -48,6 +48,10 @@ namespace SMTP_Service.UI
         // Track changes
         private bool _hasUnsavedChanges = false;
 
+        // Store actual values separately from displayed values
+        private string _actualTenantId = string.Empty;
+        private string _actualClientId = string.Empty;
+
         public ConfigurationForm()
         {
             _configManager = new Managers.ConfigurationManager();
@@ -55,6 +59,44 @@ namespace SMTP_Service.UI
             
             InitializeComponents();
             LoadConfiguration();
+        }
+
+        // Helper method to mask GUID after third dash
+        private string MaskGuid(string guid)
+        {
+            if (string.IsNullOrWhiteSpace(guid))
+                return guid;
+
+            // Count dashes to find the third one
+            int dashCount = 0;
+            int thirdDashIndex = -1;
+            
+            for (int i = 0; i < guid.Length; i++)
+            {
+                if (guid[i] == '-')
+                {
+                    dashCount++;
+                    if (dashCount == 3)
+                    {
+                        thirdDashIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // If we found the third dash, mask everything after it
+            if (thirdDashIndex > 0 && thirdDashIndex < guid.Length - 1)
+            {
+                return guid.Substring(0, thirdDashIndex + 1) + new string('*', guid.Length - thirdDashIndex - 1);
+            }
+
+            return guid;
+        }
+
+        // Helper method to check if a string is already masked
+        private bool IsMasked(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value) && value.Contains('*');
         }
 
         private void InitializeComponents()
@@ -333,6 +375,16 @@ namespace SMTP_Service.UI
             };
             btnShowPaths.Click += BtnShowPaths_Click;
             tab.Controls.Add(btnShowPaths);
+
+            // Remove Service Button
+            var btnRemoveService = new Button
+            {
+                Text = "Remove Service",
+                Location = new System.Drawing.Point(180, y),
+                Size = new System.Drawing.Size(150, 30)
+            };
+            btnRemoveService.Click += BtnRemoveService_Click;
+            tab.Controls.Add(btnRemoveService);
 
             y += 50;
 
@@ -695,9 +747,12 @@ namespace SMTP_Service.UI
                 lstUsers.Items.Add(cred.Username);
             }
 
-            // Load Graph settings
-            txtTenantId.Text = _config.GraphSettings.TenantId;
-            txtClientId.Text = _config.GraphSettings.ClientId;
+            // Load Graph settings - store actual values and display masked versions
+            _actualTenantId = _config.GraphSettings.TenantId;
+            _actualClientId = _config.GraphSettings.ClientId;
+            
+            txtTenantId.Text = MaskGuid(_config.GraphSettings.TenantId);
+            txtClientId.Text = MaskGuid(_config.GraphSettings.ClientId);
             txtClientSecret.Text = _config.GraphSettings.ClientSecret;
             txtSenderEmail.Text = _config.GraphSettings.SenderEmail;
 
@@ -710,6 +765,58 @@ namespace SMTP_Service.UI
 
             // Wire up change tracking after loading initial values
             WireUpChangeTracking();
+            
+            // Add special handlers for Tenant ID and Client ID to handle masking
+            txtTenantId.Enter += TxtTenantId_Enter;
+            txtTenantId.Leave += TxtTenantId_Leave;
+            txtClientId.Enter += TxtClientId_Enter;
+            txtClientId.Leave += TxtClientId_Leave;
+        }
+
+        private void TxtTenantId_Enter(object? sender, EventArgs e)
+        {
+            // When user clicks into the field, show the actual value (if it was masked)
+            if (IsMasked(txtTenantId.Text) && !string.IsNullOrEmpty(_actualTenantId))
+            {
+                txtTenantId.Text = _actualTenantId;
+                txtTenantId.SelectAll();
+            }
+        }
+
+        private void TxtTenantId_Leave(object? sender, EventArgs e)
+        {
+            // When user leaves the field, update actual value and show masked version
+            if (!IsMasked(txtTenantId.Text))
+            {
+                _actualTenantId = txtTenantId.Text.Trim();
+                if (!string.IsNullOrEmpty(_actualTenantId))
+                {
+                    txtTenantId.Text = MaskGuid(_actualTenantId);
+                }
+            }
+        }
+
+        private void TxtClientId_Enter(object? sender, EventArgs e)
+        {
+            // When user clicks into the field, show the actual value (if it was masked)
+            if (IsMasked(txtClientId.Text) && !string.IsNullOrEmpty(_actualClientId))
+            {
+                txtClientId.Text = _actualClientId;
+                txtClientId.SelectAll();
+            }
+        }
+
+        private void TxtClientId_Leave(object? sender, EventArgs e)
+        {
+            // When user leaves the field, update actual value and show masked version
+            if (!IsMasked(txtClientId.Text))
+            {
+                _actualClientId = txtClientId.Text.Trim();
+                if (!string.IsNullOrEmpty(_actualClientId))
+                {
+                    txtClientId.Text = MaskGuid(_actualClientId);
+                }
+            }
         }
 
         private void WireUpChangeTracking()
@@ -849,6 +956,163 @@ namespace SMTP_Service.UI
             }
         }
 
+        private void BtnRemoveService_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                const string serviceName = "SMTP to Graph Relay";
+                
+                // Check if service is installed
+                var service = System.ServiceProcess.ServiceController.GetServices()
+                    .FirstOrDefault(s => s.ServiceName == serviceName);
+
+                if (service == null)
+                {
+                    MessageBox.Show(
+                        "Service is not currently installed.\n\n" +
+                        "There is no service to remove.",
+                        "Service Not Found",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
+
+                // Confirm removal
+                var result = MessageBox.Show(
+                    $"Are you sure you want to remove the '{serviceName}' service?\n\n" +
+                    "This will uninstall the Windows Service.\n" +
+                    "The application files will remain on your system.\n\n" +
+                    "You can reinstall the service later using 'Install Service'.\n\n" +
+                    "Do you want to continue?",
+                    "Confirm Service Removal",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                // Try to stop the service if it's running
+                if (service.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                {
+                    var stopResult = MessageBox.Show(
+                        "The service is currently running.\n\n" +
+                        "It must be stopped before removal.\n\n" +
+                        "Stop the service now?",
+                        "Service Running",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (stopResult == DialogResult.Yes)
+                    {
+                        try
+                        {
+                            var stopProcess = new System.Diagnostics.Process
+                            {
+                                StartInfo = new System.Diagnostics.ProcessStartInfo
+                                {
+                                    FileName = "sc",
+                                    Arguments = $"stop \"{serviceName}\"",
+                                    UseShellExecute = false,
+                                    RedirectStandardOutput = true,
+                                    RedirectStandardError = true,
+                                    CreateNoWindow = true,
+                                    Verb = "runas"
+                                }
+                            };
+
+                            stopProcess.Start();
+                            stopProcess.WaitForExit();
+
+                            // Wait a moment for the service to stop
+                            System.Threading.Thread.Sleep(2000);
+                        }
+                        catch (Exception stopEx)
+                        {
+                            MessageBox.Show(
+                                $"Error stopping service: {stopEx.Message}\n\n" +
+                                "You may need to stop it manually before removing.",
+                                "Error",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+
+                // Remove the service
+                var removeProcess = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "sc",
+                        Arguments = $"delete \"{serviceName}\"",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                        Verb = "runas" // Run as administrator
+                    }
+                };
+
+                removeProcess.Start();
+                string output = removeProcess.StandardOutput.ReadToEnd();
+                string error = removeProcess.StandardError.ReadToEnd();
+                removeProcess.WaitForExit();
+
+                if (removeProcess.ExitCode == 0 || output.Contains("SUCCESS"))
+                {
+                    Log.Information($"Service '{serviceName}' removed successfully");
+                    
+                    // Refresh the system tray menu to show "Install Service" option
+                    TrayApplicationContext.Instance?.RefreshMenu();
+                    
+                    MessageBox.Show(
+                        $"Service '{serviceName}' has been removed successfully!\n\n" +
+                        "The application files remain on your system.\n" +
+                        "You can reinstall the service anytime using 'Install Service'.\n\n" +
+                        "The system tray menu has been updated.",
+                        "Success",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    Log.Error($"Failed to remove service: {error}");
+                    MessageBox.Show(
+                        $"Failed to remove service:\n\n{error}\n\n" +
+                        "You may need to run this application as administrator.",
+                        "Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                MessageBox.Show(
+                    "Administrator privileges are required to remove the service.\n\n" +
+                    "Please run this application as administrator and try again.",
+                    "Administrator Required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error removing service");
+                MessageBox.Show(
+                    $"Error removing service: {ex.Message}\n\n" +
+                    "Make sure you have administrator privileges.",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
         private void BtnSave_Click(object? sender, EventArgs e)
         {
             try
@@ -864,8 +1128,36 @@ namespace SMTP_Service.UI
                 _config.SmtpSettings.Port = port;
                 _config.SmtpSettings.RequireAuthentication = chkRequireAuth.Checked;
 
-                _config.GraphSettings.TenantId = txtTenantId.Text.Trim();
-                _config.GraphSettings.ClientId = txtClientId.Text.Trim();
+                // Use actual values for Tenant ID and Client ID (not the masked display values)
+                // If actual values are empty but textbox has masked values, keep the original config values
+                if (!string.IsNullOrWhiteSpace(_actualTenantId))
+                {
+                    _config.GraphSettings.TenantId = _actualTenantId;
+                }
+                else if (IsMasked(txtTenantId.Text))
+                {
+                    // Keep existing value - it's still masked, user didn't change it
+                    // Don't update _config.GraphSettings.TenantId
+                }
+                else
+                {
+                    _config.GraphSettings.TenantId = txtTenantId.Text.Trim();
+                }
+                
+                if (!string.IsNullOrWhiteSpace(_actualClientId))
+                {
+                    _config.GraphSettings.ClientId = _actualClientId;
+                }
+                else if (IsMasked(txtClientId.Text))
+                {
+                    // Keep existing value - it's still masked, user didn't change it
+                    // Don't update _config.GraphSettings.ClientId
+                }
+                else
+                {
+                    _config.GraphSettings.ClientId = txtClientId.Text.Trim();
+                }
+                
                 _config.GraphSettings.ClientSecret = txtClientSecret.Text;
                 _config.GraphSettings.SenderEmail = txtSenderEmail.Text.Trim();
 
@@ -899,13 +1191,13 @@ namespace SMTP_Service.UI
             try
             {
                 // Validate inputs first
-                if (string.IsNullOrWhiteSpace(txtTenantId.Text))
+                if (string.IsNullOrWhiteSpace(_actualTenantId))
                 {
                     MessageBox.Show("Tenant ID is required", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
                 
-                if (string.IsNullOrWhiteSpace(txtClientId.Text))
+                if (string.IsNullOrWhiteSpace(_actualClientId))
                 {
                     MessageBox.Show("Client ID is required", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
@@ -925,16 +1217,28 @@ namespace SMTP_Service.UI
 
                 var settings = new GraphSettings
                 {
-                    TenantId = txtTenantId.Text.Trim(),
-                    ClientId = txtClientId.Text.Trim(),
+                    TenantId = _actualTenantId,
+                    ClientId = _actualClientId,
                     ClientSecret = txtClientSecret.Text.Trim(),
                     SenderEmail = txtSenderEmail.Text.Trim()
                 };
 
                 Serilog.Log.Information("Testing MS Graph connection...");
-                Serilog.Log.Information($"Tenant ID: {settings.TenantId}");
-                Serilog.Log.Information($"Client ID: {settings.ClientId}");
+                Serilog.Log.Information($"Tenant ID: {MaskGuid(settings.TenantId)}");
+                Serilog.Log.Information($"Client ID: {MaskGuid(settings.ClientId)}");
                 Serilog.Log.Information($"Sender Email: {settings.SenderEmail}");
+                
+                // Debug: Check if actual values are populated
+                if (string.IsNullOrWhiteSpace(_actualTenantId))
+                {
+                    Serilog.Log.Warning("WARNING: _actualTenantId is empty! Using config value instead.");
+                    settings.TenantId = _config.GraphSettings.TenantId;
+                }
+                if (string.IsNullOrWhiteSpace(_actualClientId))
+                {
+                    Serilog.Log.Warning("WARNING: _actualClientId is empty! Using config value instead.");
+                    settings.ClientId = _config.GraphSettings.ClientId;
+                }
 
                 MessageBox.Show(
                     $"Testing with:\n" +
@@ -1108,15 +1412,17 @@ namespace SMTP_Service.UI
                 var logger = loggerFactory.CreateLogger<Services.GraphEmailService>();
 
                 // Create GraphEmailService with current settings
+                var graphSettings = new GraphSettings
+                {
+                    TenantId = string.IsNullOrWhiteSpace(_actualTenantId) ? _config.GraphSettings.TenantId : _actualTenantId,
+                    ClientId = string.IsNullOrWhiteSpace(_actualClientId) ? _config.GraphSettings.ClientId : _actualClientId,
+                    ClientSecret = txtClientSecret.Text.Trim(),
+                    SenderEmail = txtSenderEmail.Text.Trim()
+                };
+                
                 var graphService = new Services.GraphEmailService(
                     logger,
-                    new GraphSettings
-                    {
-                        TenantId = txtTenantId.Text.Trim(),
-                        ClientId = txtClientId.Text.Trim(),
-                        ClientSecret = txtClientSecret.Text.Trim(),
-                        SenderEmail = txtSenderEmail.Text.Trim()
-                    }
+                    graphSettings
                 );
 
                 // Send the email

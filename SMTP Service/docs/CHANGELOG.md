@@ -1,5 +1,107 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 1.2.0 - October 1, 2025
+
+### MAJOR FEATURES
+
+- **Self-Service Installation**
+  - Install service directly from system tray menu
+  - No longer requires external batch file
+  - Automatic menu refresh after installation/removal
+  - Uses Windows `sc` command with proper elevation
+  - Sets service to auto-start on boot
+  - Adds service description automatically
+  
+- **Service Management Integration**
+  - Dynamic system tray menu based on service installation status
+  - Shows "Install Service" when not installed
+  - Shows "Start/Stop/Restart Service" when installed
+  - Remove service option in Configuration > Application Settings
+  - Real-time menu updates without restarting application
+  
+- **Enhanced Security: Credential Masking**
+  - Tenant ID and Client ID masked after 3rd dash in UI
+  - Format: `12345678-1234-1234-****-************`
+  - Click into field to reveal full value for editing
+  - Automatic re-masking when leaving field
+  - Log files show masked values for security
+  - Actual values always used for authentication
+  - Display-only masking doesn't affect functionality
+
+### NEW FEATURES
+
+- **Remove Service Button**
+  - Added to Configuration > Application Settings tab
+  - Confirmation prompt before removal
+  - Automatically stops running service before removal
+  - Refreshes system tray menu after removal
+  - Comprehensive error handling and logging
+  
+- **Static Instance Pattern for System Tray**
+  - `TrayApplicationContext.Instance` property for cross-form access
+  - Allows Configuration form to trigger menu refresh
+  - Proper cleanup in Dispose method
+  - Thread-safe singleton implementation
+
+### IMPROVEMENTS
+
+- **Enhanced Install Service Process**
+  - Validates executable path before installation
+  - Checks if service already installed
+  - Better error messages with specific troubleshooting
+  - Logs all installation attempts and results
+  - Handles Win32Exception for permission issues
+  - Success message explains next steps
+  
+- **Smart Configuration Handling**
+  - Preserves existing config values when fields are masked
+  - Fallback to config values if UI values are empty
+  - Prevents accidental data loss during save
+  - Debug logging for troubleshooting masked values
+  
+- **Better User Experience**
+  - No need to restart application after service changes
+  - Clear feedback for all service operations
+  - Administrator privilege prompts when needed
+  - Helpful error messages with common solutions
+
+### SECURITY ENHANCEMENTS
+
+- **Credential Display Protection**
+  - Azure AD Tenant ID masked in UI and logs
+  - Azure AD Client ID masked in UI and logs
+  - Original masking implementation with interactive editing
+  - Automatic masking on focus loss
+  - Complete value shown only when field has focus
+  
+- **Safe Value Storage**
+  - Separate storage for actual vs. displayed values
+  - Masked values never used for authentication
+  - Actual values properly synchronized
+  - Configuration file stores real unmasked values
+
+### CODE QUALITY
+
+- **Improved Error Handling**
+  - Specific exception handling for permission issues
+  - Detailed error messages with context
+  - Comprehensive logging at all operation points
+  - Graceful degradation when operations fail
+  
+- **Better State Management**
+  - Service installation state tracked accurately
+  - Menu updates reflect current state
+  - Form data synchronized properly
+  - No data loss during UI operations
+
+### BREAKING CHANGES
+
+- None - all changes are backward compatible
+- Existing configurations work without modification
+- install-service.bat still present but no longer required
+
+---
+
 ## VERSION 1.1.4 - October 1, 2025
 
 ### LOGGING IMPROVEMENTS

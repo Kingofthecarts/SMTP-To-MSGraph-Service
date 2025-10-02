@@ -7,6 +7,13 @@
     <UserSecretsId>dotnet-SMTP_Service-e7879f41-b88e-40fa-8b6b-2fe0828c3265</UserSecretsId>
     <RootNamespace>SMTP_Service</RootNamespace>
     <UseWindowsForms>true</UseWindowsForms>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
+    <Product>SMTP to MS Graph Relay Service</Product>
+    <Description>SMTP relay service that forwards emails to Microsoft 365 via MS Graph API</Description>
+    <Company>Dores</Company>
+    <Copyright>Copyright © 2025</Copyright>
   </PropertyGroup>
 
   <!-- Post-build event to copy CHANGELOG.md to docs folder -->
@@ -34,9 +41,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="install-service.bat">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <Content Include="docs\CHANGELOG.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
