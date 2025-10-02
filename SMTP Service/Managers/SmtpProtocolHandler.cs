@@ -172,18 +172,18 @@ namespace SMTP_Service.Managers
             if (string.IsNullOrEmpty(_authenticatedUser))
             {
                 // This is the username
-                _authenticatedUser = DecodeBase64(data);
+                _authenticatedUser = DecodeBase64(data ?? string.Empty);
                 _logger.LogInformation($"Decoded username from base64: '{_authenticatedUser}'");
                 return "334 UGFzc3dvcmQ6"; // Base64 for "Password:"
             }
             else
             {
                 // This is the password
-                var password = DecodeBase64(data);
+                var password = DecodeBase64(data ?? string.Empty);
                 _logger.LogInformation($"Decoded password from base64 (length: {password?.Length ?? 0})");
                 _logger.LogInformation($"Attempting to validate credentials for user: '{_authenticatedUser}'");
                 
-                if (ValidateCredentials(_authenticatedUser, password))
+                if (ValidateCredentials(_authenticatedUser, password ?? string.Empty))
                 {
                     _isAuthenticated = true;
                     _logger.LogInformation($"User {_authenticatedUser} authenticated successfully");

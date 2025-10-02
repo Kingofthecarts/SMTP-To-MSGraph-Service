@@ -22,8 +22,16 @@ namespace SMTP_Service
             try
             {
                 _logger.LogInformation("About to call StartAsync on SMTP server...");
-                await _smtpServer.StartAsync(stoppingToken);
-                _logger.LogInformation("StartAsync completed");
+                if (_smtpServer != null)
+                {
+                    await _smtpServer.StartAsync(stoppingToken);
+                    _logger.LogInformation("StartAsync completed");
+                }
+                else
+                {
+                    _logger.LogError("SMTP Server service is null, cannot start");
+                    throw new InvalidOperationException("SMTP Server service is null");
+                }
             }
             catch (Exception ex)
             {

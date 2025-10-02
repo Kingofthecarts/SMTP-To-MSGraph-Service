@@ -1,5 +1,22 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 1.4.2 - October 2, 2025
+
+**Code Safety & Exit Behavior**
+
+Fixed all null reference warnings to improve code safety and resolved system tray exit behavior to properly terminate the application.
+
+**Key Changes:**
+- Fixed system tray "Exit" to properly terminate application using Environment.Exit()
+- Resolved all CS8602/CS8604 null reference warnings in Worker.cs, SmtpProtocolHandler.cs, and ConfigurationForm.cs
+- Added null-coalescing operators and null checks throughout codebase
+- Improved font initialization safety with fallback to GenericSansSerif
+- Enhanced authentication data handling with null safety
+
+**Impact:** Zero compiler warnings, more robust error handling, application now fully closes when exiting from system tray.
+
+---
+
 ## VERSION 1.4.1 - October 2, 2025
 
 **Statistics Tracking & User Management**

@@ -406,8 +406,28 @@ namespace SMTP_Service.UI
 
         private void Exit(object? sender, EventArgs e)
         {
-            _trayIcon.Visible = false;
-            Application.Exit();
+            try
+            {
+                Log.Information("Application exit requested from system tray");
+                
+                _trayIcon.Visible = false;
+                
+                // Dispose resources
+                _trayIcon?.Dispose();
+                _contextMenu?.Dispose();
+                
+                // Exit the application context
+                ExitThread();
+                
+                // Force terminate the entire process to ensure complete shutdown
+                Environment.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error during application exit");
+                // Force exit even if there's an error
+                Environment.Exit(1);
+            }
         }
 
         protected override void Dispose(bool disposing)

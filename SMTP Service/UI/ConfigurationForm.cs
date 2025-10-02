@@ -111,7 +111,7 @@ namespace SMTP_Service.UI
 
         private void InitializeComponents()
         {
-            this.Text = "SMTP to Graph Relay - Configuration v1.3.0";
+            this.Text = "SMTP to Graph Relay - Configuration v1.4.2";
             this.Size = new System.Drawing.Size(600, 700);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -248,7 +248,7 @@ namespace SMTP_Service.UI
                 Text = "Authorized SMTP Users",
                 Location = new System.Drawing.Point(20, y),
                 Size = new System.Drawing.Size(200, 25),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 10, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblHeader);
 
@@ -298,7 +298,7 @@ namespace SMTP_Service.UI
                 Text = "Add New User",
                 Location = new System.Drawing.Point(20, y),
                 Size = new System.Drawing.Size(200, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblAddHeader);
 
@@ -400,7 +400,7 @@ namespace SMTP_Service.UI
                 Text = "Application Run Mode:", 
                 Location = new System.Drawing.Point(20, y), 
                 Size = new System.Drawing.Size(200, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblRunModeHeader);
 
@@ -472,7 +472,7 @@ namespace SMTP_Service.UI
                 Text = "Email Queue Settings:", 
                 Location = new System.Drawing.Point(20, y), 
                 Size = new System.Drawing.Size(200, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblQueueHeader);
 
@@ -609,7 +609,7 @@ namespace SMTP_Service.UI
                 Text = "Service Statistics",
                 Location = new System.Drawing.Point(20, y),
                 Size = new System.Drawing.Size(200, 25),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 12, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 12, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblHeader);
 
@@ -621,7 +621,7 @@ namespace SMTP_Service.UI
                 Text = "Global Statistics",
                 Location = new System.Drawing.Point(20, y),
                 Size = new System.Drawing.Size(200, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 10, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblGlobalHeader);
 
@@ -639,45 +639,45 @@ namespace SMTP_Service.UI
                 Text = "Total Successful: 0",
                 Location = new System.Drawing.Point(10, 10),
                 Size = new System.Drawing.Size(250, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblTotalSuccess);
+            panelGlobal.Controls.Add(lblTotalSuccess!);
 
             lblTotalFailed = new Label
             {
                 Text = "Total Failed: 0",
                 Location = new System.Drawing.Point(270, 10),
                 Size = new System.Drawing.Size(250, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblTotalFailed);
+            panelGlobal.Controls.Add(lblTotalFailed!);
 
             lblLastSuccess = new Label
             {
                 Text = "Last Success: Never",
                 Location = new System.Drawing.Point(10, 40),
                 Size = new System.Drawing.Size(250, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblLastSuccess);
+            panelGlobal.Controls.Add(lblLastSuccess!);
 
             lblLastFailure = new Label
             {
                 Text = "Last Failure: Never",
                 Location = new System.Drawing.Point(270, 40),
                 Size = new System.Drawing.Size(250, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblLastFailure);
+            panelGlobal.Controls.Add(lblLastFailure!);
 
             lblQueueCount = new Label
             {
                 Text = "Messages in Queue: 0",
                 Location = new System.Drawing.Point(10, 70),
                 Size = new System.Drawing.Size(250, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
-            panelGlobal.Controls.Add(lblQueueCount);
+            panelGlobal.Controls.Add(lblQueueCount!);
 
             tab.Controls.Add(panelGlobal);
 
@@ -689,7 +689,7 @@ namespace SMTP_Service.UI
                 Text = "Per-User Statistics",
                 Location = new System.Drawing.Point(20, y),
                 Size = new System.Drawing.Size(200, 20),
-                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 10, System.Drawing.FontStyle.Bold)
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblUserHeader);
 
@@ -757,19 +757,31 @@ namespace SMTP_Service.UI
                 var stats = statsManager.GetStatistics();
 
                 // Update global stats
-                lblTotalSuccess.Text = $"Total Successful: {stats.Global.TotalSuccess:N0}";
-                lblTotalSuccess.ForeColor = System.Drawing.Color.DarkGreen;
+                if (lblTotalSuccess != null)
+                {
+                    lblTotalSuccess.Text = $"Total Successful: {stats.Global.TotalSuccess:N0}";
+                    lblTotalSuccess.ForeColor = System.Drawing.Color.DarkGreen;
+                }
 
-                lblTotalFailed.Text = $"Total Failed: {stats.Global.TotalFailed:N0}";
-                lblTotalFailed.ForeColor = System.Drawing.Color.DarkRed;
+                if (lblTotalFailed != null)
+                {
+                    lblTotalFailed.Text = $"Total Failed: {stats.Global.TotalFailed:N0}";
+                    lblTotalFailed.ForeColor = System.Drawing.Color.DarkRed;
+                }
 
-                lblLastSuccess.Text = stats.Global.LastSuccessDate.HasValue 
-                    ? $"Last Success: {stats.Global.LastSuccessDate.Value:yyyy-MM-dd HH:mm:ss}"
-                    : "Last Success: Never";
+                if (lblLastSuccess != null)
+                {
+                    lblLastSuccess.Text = stats.Global.LastSuccessDate.HasValue 
+                        ? $"Last Success: {stats.Global.LastSuccessDate.Value:yyyy-MM-dd HH:mm:ss}"
+                        : "Last Success: Never";
+                }
 
-                lblLastFailure.Text = stats.Global.LastFailureDate.HasValue
-                    ? $"Last Failure: {stats.Global.LastFailureDate.Value:yyyy-MM-dd HH:mm:ss}"
-                    : "Last Failure: Never";
+                if (lblLastFailure != null)
+                {
+                    lblLastFailure.Text = stats.Global.LastFailureDate.HasValue
+                        ? $"Last Failure: {stats.Global.LastFailureDate.Value:yyyy-MM-dd HH:mm:ss}"
+                        : "Last Failure: Never";
+                }
 
                 // Get queue count
                 try
@@ -778,11 +790,17 @@ namespace SMTP_Service.UI
                         Microsoft.Extensions.Logging.Abstractions.NullLogger<Managers.QueueManager>.Instance,
                         _config.QueueSettings
                     );
-                    lblQueueCount.Text = $"Messages in Queue: {queueManager.GetQueueCount()}";
+                    if (lblQueueCount != null)
+                    {
+                        lblQueueCount.Text = $"Messages in Queue: {queueManager.GetQueueCount()}";
+                    }
                 }
                 catch
                 {
-                    lblQueueCount.Text = "Messages in Queue: N/A";
+                    if (lblQueueCount != null)
+                    {
+                        lblQueueCount.Text = "Messages in Queue: N/A";
+                    }
                 }
 
                 // Update user stats grid
@@ -804,7 +822,7 @@ namespace SMTP_Service.UI
                     // Color code the authenticated column
                     var lastRow = dgvUserStats.Rows[dgvUserStats.Rows.Count - 1];
                     lastRow.Cells["Authenticated"].Style.ForeColor = isAuthenticated ? System.Drawing.Color.DarkGreen : System.Drawing.Color.DarkOrange;
-                    lastRow.Cells["Authenticated"].Style.Font = new System.Drawing.Font(dgvUserStats.Font, System.Drawing.FontStyle.Bold);
+                    lastRow.Cells["Authenticated"].Style.Font = new System.Drawing.Font(dgvUserStats.Font ?? System.Drawing.SystemFonts.DefaultFont ?? new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 9F), System.Drawing.FontStyle.Bold);
                 }
             }
             catch (Exception ex)
