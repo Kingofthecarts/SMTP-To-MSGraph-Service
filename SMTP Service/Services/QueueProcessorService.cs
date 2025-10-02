@@ -9,15 +9,18 @@ namespace SMTP_Service.Services
         private readonly ILogger<QueueProcessorService> _logger;
         private readonly QueueManager _queueManager;
         private readonly GraphEmailService _graphService;
+        private readonly StatisticsManager _statsManager;
 
         public QueueProcessorService(
             ILogger<QueueProcessorService> logger,
             QueueManager queueManager,
-            GraphEmailService graphService)
+            GraphEmailService graphService,
+            StatisticsManager statsManager)
         {
             _logger = logger;
             _queueManager = queueManager;
             _graphService = graphService;
+            _statsManager = statsManager;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -33,16 +36,21 @@ namespace SMTP_Service.Services
                     if (item != null)
                     {
                         _logger.LogInformation($"Processing email from queue: {item.Id}");
+                        _logger.LogInformation($"Email AuthenticatedUser: '{item.Message.AuthenticatedUser ?? "(null)"}'" );
 
                         var success = await _graphService.SendEmailAsync(item.Message);
 
                         if (success)
                         {
                             _queueManager.MarkAsSent(item.Id);
+                            _logger.LogInformation($"Email sent successfully, recording stats for user: '{item.Message.AuthenticatedUser}'" );
+                            _statsManager.RecordSuccess(item.Message.AuthenticatedUser);
                         }
                         else
                         {
                             _queueManager.MarkAsFailed(item.Id, "Failed to send via Graph API");
+                            _logger.LogWarning($"Email send failed, recording stats for user: '{item.Message.AuthenticatedUser}'" );
+                            _statsManager.RecordFailure(item.Message.AuthenticatedUser);
                         }
                     }
                     else

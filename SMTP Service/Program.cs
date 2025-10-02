@@ -191,6 +191,7 @@ try
 
             // Register services
             services.AddSingleton<SMTP_Service.Managers.QueueManager>();
+            services.AddSingleton<SMTP_Service.Managers.StatisticsManager>();
             services.AddSingleton<GraphEmailService>();
             services.AddSingleton<SmtpServerService>();
 

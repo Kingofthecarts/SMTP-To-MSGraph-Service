@@ -9,6 +9,7 @@ namespace SMTP_Service.Managers
     {
         private readonly ILogger<SmtpProtocolHandler> _logger;
         private readonly SmtpSettings _settings;
+        private readonly string _clientIp;
 
         private string _clientHostname = string.Empty;
         private bool _isAuthenticated = false;
@@ -19,10 +20,11 @@ namespace SMTP_Service.Managers
         private bool _inDataMode = false;
         private EmailMessage? _lastParsedEmail = null;
 
-        public SmtpProtocolHandler(ILogger<SmtpProtocolHandler> logger, SmtpSettings settings)
+        public SmtpProtocolHandler(ILogger<SmtpProtocolHandler> logger, SmtpSettings settings, string clientIp)
         {
             _logger = logger;
             _settings = settings;
+            _clientIp = clientIp;
         }
 
         public string ProcessCommand(string command)
@@ -79,7 +81,9 @@ namespace SMTP_Service.Managers
             // This prevents clients that require TLS from immediately disconnecting
             response.AppendLine("250-STARTTLS");
             
-            if (_settings.RequireAuthentication)
+            // Always advertise AUTH if there are credentials configured
+            // Whether it's required or optional is enforced in HandleMail
+            if (_settings.Credentials.Count > 0)
             {
                 response.AppendLine("250-AUTH LOGIN PLAIN");
             }
@@ -100,11 +104,9 @@ namespace SMTP_Service.Managers
 
         private string HandleAuth(string args)
         {
-            if (!_settings.RequireAuthentication)
-            {
-                return "503 Authentication not required";
-            }
-
+            // Allow authentication even if not required
+            // This supports both modes: optional and required auth
+            
             var parts = args.Split(' ', 2);
             var mechanism = parts[0].ToUpper();
 
@@ -165,16 +167,22 @@ namespace SMTP_Service.Managers
 
         public string ProcessAuthData(string data)
         {
+            _logger.LogInformation($"ProcessAuthData called with data length: {data?.Length ?? 0}");
+            
             if (string.IsNullOrEmpty(_authenticatedUser))
             {
                 // This is the username
                 _authenticatedUser = DecodeBase64(data);
+                _logger.LogInformation($"Decoded username from base64: '{_authenticatedUser}'");
                 return "334 UGFzc3dvcmQ6"; // Base64 for "Password:"
             }
             else
             {
                 // This is the password
                 var password = DecodeBase64(data);
+                _logger.LogInformation($"Decoded password from base64 (length: {password?.Length ?? 0})");
+                _logger.LogInformation($"Attempting to validate credentials for user: '{_authenticatedUser}'");
+                
                 if (ValidateCredentials(_authenticatedUser, password))
                 {
                     _isAuthenticated = true;
@@ -192,16 +200,59 @@ namespace SMTP_Service.Managers
 
         private bool ValidateCredentials(string username, string password)
         {
-            return _settings.Credentials.Any(c => 
-                c.Username.Equals(username, StringComparison.OrdinalIgnoreCase) && 
-                c.Password == password);
+            _logger.LogInformation($"Validating credentials for username: '{username}'");
+            _logger.LogInformation($"Total credentials configured: {_settings.Credentials.Count}");
+            
+            foreach (var cred in _settings.Credentials)
+            {
+                _logger.LogInformation($"Checking against stored user: '{cred.Username}'");
+                if (cred.Username.Equals(username, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation($"Username matched! Checking password...");
+                    if (cred.Password == password)
+                    {
+                        _logger.LogInformation($"Password matched! Authentication successful.");
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"Password did NOT match for user '{username}'");
+                        _logger.LogWarning($"Expected length: {cred.Password?.Length ?? 0}, Got length: {password?.Length ?? 0}");
+                        return false;
+                    }
+                }
+            }
+            
+            _logger.LogWarning($"No matching username found for '{username}'");
+            return false;
         }
 
         private string HandleMail(string args)
         {
+            _logger.LogInformation($"=== MAIL FROM PROCESSING ===");
+            _logger.LogInformation($"RequireAuthentication setting: {_settings.RequireAuthentication}");
+            _logger.LogInformation($"IsAuthenticated status: {_isAuthenticated}");
+            _logger.LogInformation($"AuthenticatedUser: '{_authenticatedUser}'");
+            
             if (_settings.RequireAuthentication && !_isAuthenticated)
             {
+                _logger.LogWarning($"REJECTING: Authentication is REQUIRED and client is NOT authenticated");
                 return "530 Authentication required";
+            }
+            
+            if (_settings.RequireAuthentication && _isAuthenticated)
+            {
+                _logger.LogInformation($"ALLOWING: Authentication is REQUIRED and client IS authenticated as '{_authenticatedUser}'");
+            }
+            
+            if (!_settings.RequireAuthentication && _isAuthenticated)
+            {
+                _logger.LogInformation($"ALLOWING: Authentication is OPTIONAL and client IS authenticated as '{_authenticatedUser}'");
+            }
+            
+            if (!_settings.RequireAuthentication && !_isAuthenticated)
+            {
+                _logger.LogInformation($"ALLOWING: Authentication is OPTIONAL and client is NOT authenticated");
             }
 
             if (!args.StartsWith("FROM:", StringComparison.OrdinalIgnoreCase))
@@ -210,7 +261,8 @@ namespace SMTP_Service.Managers
             }
 
             _mailFrom = ExtractEmail(args.Substring(5));
-            _logger.LogInformation($"MAIL FROM: {_mailFrom}");
+            _logger.LogInformation($"MAIL FROM: {_mailFrom} - ACCEPTED");
+            _logger.LogInformation($"=========================");
             return "250 OK";
         }
 
@@ -277,12 +329,16 @@ namespace SMTP_Service.Managers
         {
             try
             {
+                var authenticatedUserValue = _isAuthenticated ? _authenticatedUser : $"IP:{_clientIp}";
+                _logger.LogInformation($"Parsing email data. IsAuthenticated: {_isAuthenticated}, AuthenticatedUser will be: '{authenticatedUserValue}'");
+                
                 var email = new EmailMessage
                 {
                     From = _mailFrom,
                     To = new List<string>(_rcptTo),
                     RawMessage = _dataBuffer.ToString(),
-                    ReceivedAt = DateTime.Now
+                    ReceivedAt = DateTime.Now,
+                    AuthenticatedUser = authenticatedUserValue
                 };
 
                 // Parse headers and body
@@ -312,6 +368,8 @@ namespace SMTP_Service.Managers
                     email.Body = data;
                 }
 
+                _logger.LogInformation($"Email parsed successfully. From: {email.From}, To: {string.Join(", ", email.To)}, AuthenticatedUser: '{email.AuthenticatedUser}'");
+                
                 ResetTransaction();
                 return email;
             }

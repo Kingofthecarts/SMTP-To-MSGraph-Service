@@ -17,5 +17,8 @@ namespace SMTP_Service.Models
         public string Charset { get; set; } = "utf-8";
         public string ContentTransferEncoding { get; set; } = string.Empty;
         public Dictionary<string, string> Headers { get; set; } = new();
+        
+        // Track authenticated user for statistics
+        public string? AuthenticatedUser { get; set; }
     }
 }

@@ -36,6 +36,16 @@ namespace SMTP_Service.Services
 
             try
             {
+                _logger.LogInformation($"=== SMTP Server Configuration ===");
+                _logger.LogInformation($"Port: {_settings.Port}");
+                _logger.LogInformation($"Require Authentication: {_settings.RequireAuthentication}");
+                _logger.LogInformation($"Configured Users: {_settings.Credentials.Count}");
+                foreach (var cred in _settings.Credentials)
+                {
+                    _logger.LogInformation($"  - User: {cred.Username}");
+                }
+                _logger.LogInformation($"=================================");
+                
                 _logger.LogInformation($"Attempting to start SMTP server on port {_settings.Port}...");
                 _listener = new TcpListener(IPAddress.Any, _settings.Port);
                 _listener.Start();
@@ -109,6 +119,7 @@ namespace SMTP_Service.Services
         private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
         {
             var clientEndpoint = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
+            var clientIp = client.Client.RemoteEndPoint is IPEndPoint ipEndpoint ? ipEndpoint.Address.ToString() : "Unknown";
             var connectionStartTime = DateTime.Now;
             _logger.LogInformation($"Client connected: {clientEndpoint}");
             Console.WriteLine($"[SMTP] ============================================");
@@ -132,7 +143,8 @@ namespace SMTP_Service.Services
                     
                     var handler = new SmtpProtocolHandler(
                         SmtpLoggerFactory.Factory.CreateLogger<SmtpProtocolHandler>(),
-                        _settings
+                        _settings,
+                        clientIp
                     );
 
                     // Send greeting - RFC 5321 compliant format
@@ -181,7 +193,8 @@ namespace SMTP_Service.Services
                             Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Client closed connection (received null)");
                             Console.WriteLine($"[SMTP] Connection duration: {duration.TotalSeconds:F3} seconds");
                             Console.WriteLine($"[SMTP] Commands received: {commandCount}");
-                            _logger.LogInformation($"Client {clientEndpoint} disconnected after {duration.TotalSeconds:F3}s, {commandCount} commands");
+                            Console.WriteLine($"[SMTP] Authentication status: {(handler.IsAuthenticated ? "AUTHENTICATED" : "NOT AUTHENTICATED")}");
+                            _logger.LogInformation($"Client {clientEndpoint} disconnected after {duration.TotalSeconds:F3}s, {commandCount} commands, Auth: {handler.IsAuthenticated}");
                             break;
                         }
 
@@ -194,24 +207,26 @@ namespace SMTP_Service.Services
                         // Handle AUTH LOGIN sequence
                         if (isAuthPhase && !line.StartsWith("AUTH", StringComparison.OrdinalIgnoreCase))
                         {
-                            Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Processing AUTH data...");
+                            Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Processing AUTH data (isAuthPhase=true)...");
                             response = handler.ProcessAuthData(line);
+                            Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] AUTH response: {response}");
                             if (response.StartsWith("235") || response.StartsWith("535"))
                             {
                                 isAuthPhase = false;
-                                Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] AUTH phase completed");
+                                Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] AUTH phase completed. Success: {response.StartsWith("235")}, IsAuthenticated: {handler.IsAuthenticated}");
                             }
                         }
                         else
                         {
-                            Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Processing command...");
+                            Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Processing command (isAuthPhase=false)...");
                             response = handler.ProcessCommand(line);
+                            Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Command response: {response.Split('\n')[0]}");
                             
                             // Check if entering AUTH phase
                             if (line.StartsWith("AUTH LOGIN", StringComparison.OrdinalIgnoreCase))
                             {
                                 isAuthPhase = true;
-                                Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Entering AUTH phase");
+                                Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Entering AUTH LOGIN phase");
                             }
                         }
 

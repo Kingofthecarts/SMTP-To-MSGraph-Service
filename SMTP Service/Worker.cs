@@ -17,14 +17,18 @@ namespace SMTP_Service
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("SMTP to Graph Relay Service starting...");
+            _logger.LogInformation($"SMTP Server service object created: {_smtpServer != null}");
 
             try
             {
+                _logger.LogInformation("About to call StartAsync on SMTP server...");
                 await _smtpServer.StartAsync(stoppingToken);
+                _logger.LogInformation("StartAsync completed");
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Fatal error: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 throw;
             }
         }

@@ -39,6 +39,16 @@ namespace SMTP_Service.UI
         private CheckBox chkTestHtml = null!;
         private Button btnSendTest = null!;
 
+        // Statistics Controls
+        private Label lblTotalSuccess = null!;
+        private Label lblTotalFailed = null!;
+        private Label lblLastSuccess = null!;
+        private Label lblLastFailure = null!;
+        private Label lblQueueCount = null!;
+        private DataGridView dgvUserStats = null!;
+        private Button btnRefreshStats = null!;
+        private Button btnResetStats = null!;
+
         // Buttons
         private Button btnSave = null!;
         private Button btnCancel = null!;
@@ -117,6 +127,11 @@ namespace SMTP_Service.UI
             InitializeSmtpTab(smtpTab);
             tabControl.TabPages.Add(smtpTab);
 
+            // Users Tab
+            var usersTab = new TabPage("Users");
+            InitializeUsersTab(usersTab);
+            tabControl.TabPages.Add(usersTab);
+
             // Graph Settings Tab
             var graphTab = new TabPage("MS Graph Settings");
             InitializeGraphTab(graphTab);
@@ -131,6 +146,11 @@ namespace SMTP_Service.UI
             var testEmailTab = new TabPage("Test Email");
             InitializeTestEmailTab(testEmailTab);
             tabControl.TabPages.Add(testEmailTab);
+
+            // Statistics Tab
+            var statsTab = new TabPage("Statistics");
+            InitializeStatisticsTab(statsTab);
+            tabControl.TabPages.Add(statsTab);
 
             // Changelog Tab
             var changelogTab = new TabPage("Changelog");
@@ -201,8 +221,55 @@ namespace SMTP_Service.UI
 
             y += 40;
 
-            // User Management
-            var lblUsers = new Label { Text = "Authorized Users:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(200, 20) };
+            // Info text
+            var lblInfo = new Label
+            {
+                Text = "Port Configuration:\n\n" +
+                       "Default SMTP port is 25 for standard SMTP relay.\n\n" +
+                       "Authentication Modes:\n" +
+                       "• When ENABLED: Authentication is REQUIRED - only authorized users can send emails\n" +
+                       "• When DISABLED: Authentication is OPTIONAL - both authenticated and unauthenticated connections are allowed\n\n" +
+                       "Note: Configure authorized users in the Users tab. Changes require service restart.",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(520, 170),
+                AutoSize = false,
+                ForeColor = System.Drawing.Color.DarkBlue
+            };
+            tab.Controls.Add(lblInfo);
+        }
+
+        private void InitializeUsersTab(TabPage tab)
+        {
+            int y = 20;
+
+            // Header
+            var lblHeader = new Label
+            {
+                Text = "Authorized SMTP Users",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(200, 25),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 10, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblHeader);
+
+            y += 35;
+
+            // Info
+            var lblInfo = new Label
+            {
+                Text = "Manage users who can authenticate and send emails through the SMTP relay.\n" +
+                       "Note: Authentication must be enabled in SMTP Settings for user credentials to be required.",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(520, 40),
+                AutoSize = false,
+                ForeColor = System.Drawing.Color.DarkBlue
+            };
+            tab.Controls.Add(lblInfo);
+
+            y += 50;
+
+            // User List
+            var lblUsers = new Label { Text = "Current Authorized Users:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(200, 20) };
             tab.Controls.Add(lblUsers);
 
             y += 30;
@@ -210,39 +277,50 @@ namespace SMTP_Service.UI
             lstUsers = new ListBox 
             { 
                 Location = new System.Drawing.Point(20, y), 
-                Size = new System.Drawing.Size(350, 150) 
+                Size = new System.Drawing.Size(400, 200) 
             };
             tab.Controls.Add(lstUsers);
 
             btnRemoveUser = new Button
             {
-                Text = "Remove",
-                Location = new System.Drawing.Point(380, y),
-                Size = new System.Drawing.Size(80, 30)
+                Text = "Remove Selected",
+                Location = new System.Drawing.Point(430, y),
+                Size = new System.Drawing.Size(120, 30)
             };
             btnRemoveUser.Click += BtnRemoveUser_Click;
             tab.Controls.Add(btnRemoveUser);
 
-            y += 160;
+            y += 220;
 
-            // Add user section
+            // Add new user section
+            var lblAddHeader = new Label
+            {
+                Text = "Add New User",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblAddHeader);
+
+            y += 30;
+
             var lblUsername = new Label { Text = "Username:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(100, 20) };
-            txtUsername = new TextBox { Location = new System.Drawing.Point(130, y), Size = new System.Drawing.Size(150, 20) };
+            txtUsername = new TextBox { Location = new System.Drawing.Point(130, y), Size = new System.Drawing.Size(250, 20) };
             tab.Controls.Add(lblUsername);
             tab.Controls.Add(txtUsername);
 
             y += 30;
 
             var lblPassword = new Label { Text = "Password:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(100, 20) };
-            txtPassword = new TextBox { Location = new System.Drawing.Point(130, y), Size = new System.Drawing.Size(150, 20), UseSystemPasswordChar = true };
+            txtPassword = new TextBox { Location = new System.Drawing.Point(130, y), Size = new System.Drawing.Size(250, 20), UseSystemPasswordChar = true };
             tab.Controls.Add(lblPassword);
             tab.Controls.Add(txtPassword);
 
             btnAddUser = new Button
             {
                 Text = "Add User",
-                Location = new System.Drawing.Point(290, y - 15),
-                Size = new System.Drawing.Size(80, 30)
+                Location = new System.Drawing.Point(390, y - 15),
+                Size = new System.Drawing.Size(100, 30)
             };
             btnAddUser.Click += BtnAddUser_Click;
             tab.Controls.Add(btnAddUser);
@@ -519,6 +597,254 @@ namespace SMTP_Service.UI
                 ForeColor = System.Drawing.Color.Gray
             };
             tab.Controls.Add(lblNote);
+        }
+
+        private void InitializeStatisticsTab(TabPage tab)
+        {
+            int y = 20;
+
+            // Header
+            var lblHeader = new Label
+            {
+                Text = "Service Statistics",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(200, 25),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 12, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblHeader);
+
+            y += 35;
+
+            // Global Stats Section
+            var lblGlobalHeader = new Label
+            {
+                Text = "Global Statistics",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 10, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblGlobalHeader);
+
+            y += 30;
+
+            var panelGlobal = new Panel
+            {
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(540, 120),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            lblTotalSuccess = new Label
+            {
+                Text = "Total Successful: 0",
+                Location = new System.Drawing.Point(10, 10),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+            };
+            panelGlobal.Controls.Add(lblTotalSuccess);
+
+            lblTotalFailed = new Label
+            {
+                Text = "Total Failed: 0",
+                Location = new System.Drawing.Point(270, 10),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+            };
+            panelGlobal.Controls.Add(lblTotalFailed);
+
+            lblLastSuccess = new Label
+            {
+                Text = "Last Success: Never",
+                Location = new System.Drawing.Point(10, 40),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+            };
+            panelGlobal.Controls.Add(lblLastSuccess);
+
+            lblLastFailure = new Label
+            {
+                Text = "Last Failure: Never",
+                Location = new System.Drawing.Point(270, 40),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Regular)
+            };
+            panelGlobal.Controls.Add(lblLastFailure);
+
+            lblQueueCount = new Label
+            {
+                Text = "Messages in Queue: 0",
+                Location = new System.Drawing.Point(10, 70),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 9, System.Drawing.FontStyle.Bold)
+            };
+            panelGlobal.Controls.Add(lblQueueCount);
+
+            tab.Controls.Add(panelGlobal);
+
+            y += 130;
+
+            // User Stats Section
+            var lblUserHeader = new Label
+            {
+                Text = "Per-User Statistics",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont.FontFamily, 10, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblUserHeader);
+
+            y += 30;
+
+            dgvUserStats = new DataGridView
+            {
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(540, 250),
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                ReadOnly = true,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false
+            };
+
+            dgvUserStats.Columns.Add("Username", "Username");
+            dgvUserStats.Columns.Add("Authenticated", "Auth");
+            dgvUserStats.Columns.Add("Success", "Successful");
+            dgvUserStats.Columns.Add("Failed", "Failed");
+            dgvUserStats.Columns.Add("LastSuccess", "Last Success");
+            dgvUserStats.Columns.Add("LastFailure", "Last Failure");
+
+            // Set column widths
+            dgvUserStats.Columns["Username"].FillWeight = 25;
+            dgvUserStats.Columns["Authenticated"].FillWeight = 10;
+            dgvUserStats.Columns["Success"].FillWeight = 12;
+            dgvUserStats.Columns["Failed"].FillWeight = 12;
+            dgvUserStats.Columns["LastSuccess"].FillWeight = 20;
+            dgvUserStats.Columns["LastFailure"].FillWeight = 20;
+
+            tab.Controls.Add(dgvUserStats);
+
+            y += 260;
+
+            // Buttons
+            btnRefreshStats = new Button
+            {
+                Text = "Refresh Statistics",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(130, 30)
+            };
+            btnRefreshStats.Click += BtnRefreshStats_Click;
+            tab.Controls.Add(btnRefreshStats);
+
+            btnResetStats = new Button
+            {
+                Text = "Reset Statistics",
+                Location = new System.Drawing.Point(160, y),
+                Size = new System.Drawing.Size(130, 30)
+            };
+            btnResetStats.Click += BtnResetStats_Click;
+            tab.Controls.Add(btnResetStats);
+
+            // Load initial stats
+            LoadStatistics();
+        }
+
+        private void LoadStatistics()
+        {
+            try
+            {
+                var statsManager = new Managers.StatisticsManager();
+                var stats = statsManager.GetStatistics();
+
+                // Update global stats
+                lblTotalSuccess.Text = $"Total Successful: {stats.Global.TotalSuccess:N0}";
+                lblTotalSuccess.ForeColor = System.Drawing.Color.DarkGreen;
+
+                lblTotalFailed.Text = $"Total Failed: {stats.Global.TotalFailed:N0}";
+                lblTotalFailed.ForeColor = System.Drawing.Color.DarkRed;
+
+                lblLastSuccess.Text = stats.Global.LastSuccessDate.HasValue 
+                    ? $"Last Success: {stats.Global.LastSuccessDate.Value:yyyy-MM-dd HH:mm:ss}"
+                    : "Last Success: Never";
+
+                lblLastFailure.Text = stats.Global.LastFailureDate.HasValue
+                    ? $"Last Failure: {stats.Global.LastFailureDate.Value:yyyy-MM-dd HH:mm:ss}"
+                    : "Last Failure: Never";
+
+                // Get queue count
+                try
+                {
+                    var queueManager = new Managers.QueueManager(
+                        Microsoft.Extensions.Logging.Abstractions.NullLogger<Managers.QueueManager>.Instance,
+                        _config.QueueSettings
+                    );
+                    lblQueueCount.Text = $"Messages in Queue: {queueManager.GetQueueCount()}";
+                }
+                catch
+                {
+                    lblQueueCount.Text = "Messages in Queue: N/A";
+                }
+
+                // Update user stats grid
+                dgvUserStats.Rows.Clear();
+                foreach (var userStat in stats.UserStats.Values.OrderBy(u => u.Username))
+                {
+                    var isAuthenticated = !userStat.Username.StartsWith("IP:");
+                    var displayName = isAuthenticated ? userStat.Username : userStat.Username.Substring(3); // Remove "IP:" prefix
+                    
+                    dgvUserStats.Rows.Add(
+                        displayName,
+                        isAuthenticated ? "Yes" : "No",
+                        userStat.TotalSuccess.ToString("N0"),
+                        userStat.TotalFailed.ToString("N0"),
+                        userStat.LastSuccessDate.HasValue ? userStat.LastSuccessDate.Value.ToString("yyyy-MM-dd HH:mm:ss") : "Never",
+                        userStat.LastFailureDate.HasValue ? userStat.LastFailureDate.Value.ToString("yyyy-MM-dd HH:mm:ss") : "Never"
+                    );
+                    
+                    // Color code the authenticated column
+                    var lastRow = dgvUserStats.Rows[dgvUserStats.Rows.Count - 1];
+                    lastRow.Cells["Authenticated"].Style.ForeColor = isAuthenticated ? System.Drawing.Color.DarkGreen : System.Drawing.Color.DarkOrange;
+                    lastRow.Cells["Authenticated"].Style.Font = new System.Drawing.Font(dgvUserStats.Font, System.Drawing.FontStyle.Bold);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading statistics: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void BtnRefreshStats_Click(object? sender, EventArgs e)
+        {
+            LoadStatistics();
+            MessageBox.Show("Statistics refreshed!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void BtnResetStats_Click(object? sender, EventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Are you sure you want to reset ALL statistics?\n\nThis will clear:\n" +
+                "- Global success/failure counts\n" +
+                "- All per-user statistics\n" +
+                "- Last success/failure dates\n\n" +
+                "This action cannot be undone!",
+                "Confirm Reset",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    var statsManager = new Managers.StatisticsManager();
+                    statsManager.ResetStatistics();
+                    LoadStatistics();
+                    MessageBox.Show("All statistics have been reset.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error resetting statistics: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
         }
 
         private void InitializeChangelogTab(TabPage tab)
