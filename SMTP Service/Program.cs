@@ -33,25 +33,21 @@ if (!runAsTray && !runAsConsoleWithTray)
 string runModeName;
 string runModeDescription;
 string runModeSource;
-int finalRunMode;
 
 if (runAsTray)
 {
     runModeName = "Tray Only";
     runModeDescription = "RunMode 2: System tray icon only";
-    finalRunMode = 2;
 }
 else if (runAsConsoleWithTray)
 {
     runModeName = "Console + Tray";
     runModeDescription = "RunMode 1: Console with system tray icon (DEFAULT)";
-    finalRunMode = 1;
 }
 else
 {
     runModeName = "Service/Console";
     runModeDescription = "RunMode 0: Service or console mode";
-    finalRunMode = 0;
 }
 
 // Determine source of run mode

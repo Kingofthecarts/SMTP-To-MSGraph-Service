@@ -55,13 +55,45 @@ namespace SMTP_Service.Services
 
             try
             {
+                // Ensure body content is properly formatted for HTML emails
+                string bodyContent = email.Body;
+                
+                // If it's HTML and doesn't have proper charset declaration, add it
+                if (email.IsHtml && !string.IsNullOrEmpty(bodyContent))
+                {
+                    // Check if HTML already has proper encoding declaration
+                    if (!bodyContent.Contains("charset", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Add charset meta tag if missing
+                        if (bodyContent.Contains("<head>", StringComparison.OrdinalIgnoreCase))
+                        {
+                            bodyContent = bodyContent.Replace("<head>", 
+                                "<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />", 
+                                StringComparison.OrdinalIgnoreCase);
+                        }
+                        else if (bodyContent.Contains("<html>", StringComparison.OrdinalIgnoreCase))
+                        {
+                            bodyContent = bodyContent.Replace("<html>", 
+                                "<html>\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n</head>", 
+                                StringComparison.OrdinalIgnoreCase);
+                        }
+                        else
+                        {
+                            // Wrap in proper HTML structure
+                            bodyContent = $"<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n</head>\n<body>\n{bodyContent}\n</body>\n</html>";
+                        }
+                    }
+                    
+                    _logger.LogInformation("HTML email body prepared with UTF-8 charset");
+                }
+
                 var message = new GraphMessage
                 {
                     Subject = email.Subject,
                     Body = new GraphItemBody
                     {
                         ContentType = email.IsHtml ? GraphBodyType.Html : GraphBodyType.Text,
-                        Content = email.Body
+                        Content = bodyContent
                     },
                     ToRecipients = email.To.Select(to => new GraphRecipient
                     {
@@ -120,6 +152,7 @@ namespace SMTP_Service.Services
             catch (Exception ex)
             {
                 _logger.LogError($"Failed to send email via Graph API: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 return false;
             }
         }

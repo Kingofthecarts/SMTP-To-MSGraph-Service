@@ -101,7 +101,7 @@ namespace SMTP_Service.UI
 
         private void InitializeComponents()
         {
-            this.Text = "SMTP to Graph Relay - Configuration";
+            this.Text = "SMTP to Graph Relay - Configuration v1.3.0";
             this.Size = new System.Drawing.Size(600, 700);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;

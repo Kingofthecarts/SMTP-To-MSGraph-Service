@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using SMTP_Service.Models;
 using Microsoft.Extensions.Logging;
 
@@ -252,7 +253,7 @@ namespace SMTP_Service.Managers
                 
                 if (_lastParsedEmail != null)
                 {
-                    _logger.LogInformation($"Email received: From={_lastParsedEmail.From}, To={string.Join(", ", _lastParsedEmail.To)}");
+                    _logger.LogInformation($"Email received: From={_lastParsedEmail.From}, To={string.Join(", ", _lastParsedEmail.To)}, Charset={_lastParsedEmail.Charset}, Encoding={_lastParsedEmail.ContentTransferEncoding}");
                     return "250 OK: Message accepted for delivery";
                 }
                 else
@@ -270,17 +271,6 @@ namespace SMTP_Service.Managers
             var email = _lastParsedEmail;
             _lastParsedEmail = null;
             return email;
-        }
-
-        private string HandleRset()
-        {
-            ResetTransaction();
-            return "250 OK";
-        }
-
-        private string HandleQuit()
-        {
-            return "221 Bye";
         }
 
         public EmailMessage? ParseEmailData()
@@ -307,10 +297,15 @@ namespace SMTP_Service.Managers
                 if (headerEndIndex > 0)
                 {
                     var headers = data.Substring(0, headerEndIndex);
-                    var body = data.Substring(headerEndIndex).Trim();
+                    var body = data.Substring(headerEndIndex + (data[headerEndIndex] == '\r' ? 4 : 2)); // Don't trim!
 
                     ParseHeaders(headers, email);
-                    email.Body = body;
+                    
+                    // Decode the body based on Content-Transfer-Encoding
+                    email.Body = DecodeBody(body, email.ContentTransferEncoding);
+                    
+                    // Convert body to UTF-8 if needed
+                    email.Body = EnsureUtf8(email.Body, email.Charset);
                 }
                 else
                 {
@@ -323,6 +318,7 @@ namespace SMTP_Service.Managers
             catch (Exception ex)
             {
                 _logger.LogError($"Error parsing email: {ex.Message}");
+                _logger.LogError($"Stack trace: {ex.StackTrace}");
                 ResetTransaction();
                 return null;
             }
@@ -330,24 +326,200 @@ namespace SMTP_Service.Managers
 
         private void ParseHeaders(string headers, EmailMessage email)
         {
-            var lines = headers.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            var lines = headers.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            string currentHeader = string.Empty;
+            string currentValue = string.Empty;
             
             foreach (var line in lines)
             {
-                if (line.StartsWith("Subject:", StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                    
+                // Check if this is a continuation of the previous header (starts with whitespace)
+                if (line.StartsWith(" ") || line.StartsWith("\t"))
                 {
-                    email.Subject = line.Substring(8).Trim();
+                    currentValue += " " + line.Trim();
+                    continue;
                 }
-                else if (line.StartsWith("Content-Type:", StringComparison.OrdinalIgnoreCase))
+                
+                // Process the previous header if we have one
+                if (!string.IsNullOrEmpty(currentHeader))
                 {
-                    email.IsHtml = line.Contains("text/html", StringComparison.OrdinalIgnoreCase);
+                    ProcessHeader(currentHeader, currentValue, email);
                 }
-                else if (line.StartsWith("Cc:", StringComparison.OrdinalIgnoreCase))
+                
+                // Start a new header
+                var colonIndex = line.IndexOf(':');
+                if (colonIndex > 0)
                 {
-                    var ccAddresses = line.Substring(3).Split(',');
-                    email.Cc.AddRange(ccAddresses.Select(a => ExtractEmail(a.Trim())));
+                    currentHeader = line.Substring(0, colonIndex).Trim();
+                    currentValue = line.Substring(colonIndex + 1).Trim();
                 }
             }
+            
+            // Process the last header
+            if (!string.IsNullOrEmpty(currentHeader))
+            {
+                ProcessHeader(currentHeader, currentValue, email);
+            }
+        }
+
+        private void ProcessHeader(string headerName, string headerValue, EmailMessage email)
+        {
+            // Store all headers
+            email.Headers[headerName] = headerValue;
+            
+            var headerNameLower = headerName.ToLower();
+            
+            switch (headerNameLower)
+            {
+                case "subject":
+                    email.Subject = DecodeHeaderValue(headerValue);
+                    break;
+                    
+                case "content-type":
+                    email.ContentType = headerValue;
+                    email.IsHtml = headerValue.Contains("text/html", StringComparison.OrdinalIgnoreCase);
+                    
+                    // Extract charset
+                    var charsetMatch = Regex.Match(headerValue, @"charset\s*=\s*[""']?([^""'\s;]+)", RegexOptions.IgnoreCase);
+                    if (charsetMatch.Success)
+                    {
+                        email.Charset = charsetMatch.Groups[1].Value.ToLower();
+                    }
+                    break;
+                    
+                case "content-transfer-encoding":
+                    email.ContentTransferEncoding = headerValue.Trim().ToLower();
+                    break;
+                    
+                case "cc":
+                    var ccAddresses = headerValue.Split(',');
+                    email.Cc.AddRange(ccAddresses.Select(a => ExtractEmail(a.Trim())));
+                    break;
+            }
+        }
+
+        private string DecodeBody(string body, string transferEncoding)
+        {
+            try
+            {
+                switch (transferEncoding.ToLower())
+                {
+                    case "base64":
+                        _logger.LogInformation("Decoding Base64 body content");
+                        // Remove whitespace and decode
+                        var cleanBase64 = Regex.Replace(body, @"\s+", "");
+                        if (string.IsNullOrEmpty(cleanBase64))
+                            return body;
+                            
+                        var bytes = Convert.FromBase64String(cleanBase64);
+                        return Encoding.UTF8.GetString(bytes);
+                        
+                    case "quoted-printable":
+                        _logger.LogInformation("Decoding Quoted-Printable body content");
+                        return DecodeQuotedPrintable(body);
+                        
+                    case "7bit":
+                    case "8bit":
+                    case "binary":
+                    default:
+                        return body;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error decoding body with encoding '{transferEncoding}': {ex.Message}");
+                return body; // Return original if decoding fails
+            }
+        }
+
+        private string DecodeQuotedPrintable(string input)
+        {
+            var regex = new Regex(@"=([0-9A-F]{2})", RegexOptions.IgnoreCase);
+            return regex.Replace(input, match => 
+            {
+                var hex = match.Groups[1].Value;
+                var value = Convert.ToInt32(hex, 16);
+                return ((char)value).ToString();
+            }).Replace("=\r\n", "").Replace("=\n", "");
+        }
+
+        private string EnsureUtf8(string content, string charset)
+        {
+            try
+            {
+                // If already UTF-8, return as-is
+                if (charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase))
+                    return content;
+                
+                // Try to convert from the specified charset to UTF-8
+                _logger.LogInformation($"Converting content from {charset} to UTF-8");
+                
+                Encoding sourceEncoding;
+                try
+                {
+                    sourceEncoding = Encoding.GetEncoding(charset);
+                }
+                catch
+                {
+                    _logger.LogWarning($"Unknown charset '{charset}', assuming UTF-8");
+                    return content;
+                }
+                
+                // Convert string to bytes in source encoding, then back to UTF-8 string
+                var sourceBytes = sourceEncoding.GetBytes(content);
+                return Encoding.UTF8.GetString(sourceBytes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error converting charset from {charset} to UTF-8: {ex.Message}");
+                return content;
+            }
+        }
+
+        private string DecodeHeaderValue(string headerValue)
+        {
+            // Decode RFC 2047 encoded words (=?charset?encoding?text?=)
+            var regex = new Regex(@"=\?([^?]+)\?([BQbq])\?([^?]+)\?=");
+            return regex.Replace(headerValue, match =>
+            {
+                var charset = match.Groups[1].Value;
+                var encoding = match.Groups[2].Value.ToUpper();
+                var encodedText = match.Groups[3].Value;
+
+                try
+                {
+                    byte[] bytes;
+                    if (encoding == "B")
+                    {
+                        bytes = Convert.FromBase64String(encodedText);
+                    }
+                    else // Q encoding (Quoted-Printable)
+                    {
+                        encodedText = encodedText.Replace('_', ' ');
+                        return DecodeQuotedPrintable(encodedText);
+                    }
+
+                    var enc = Encoding.GetEncoding(charset);
+                    return enc.GetString(bytes);
+                }
+                catch
+                {
+                    return match.Value; // Return original if decoding fails
+                }
+            });
+        }
+
+        private string HandleRset()
+        {
+            ResetTransaction();
+            return "250 OK";
+        }
+
+        private string HandleQuit()
+        {
+            return "221 Bye";
         }
 
         private void ResetTransaction()

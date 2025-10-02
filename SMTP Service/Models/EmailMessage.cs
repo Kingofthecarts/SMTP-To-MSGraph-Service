@@ -11,5 +11,11 @@ namespace SMTP_Service.Models
         public bool IsHtml { get; set; } = false;
         public DateTime ReceivedAt { get; set; } = DateTime.Now;
         public string RawMessage { get; set; } = string.Empty;
+        
+        // Enhanced MIME support
+        public string ContentType { get; set; } = string.Empty;
+        public string Charset { get; set; } = "utf-8";
+        public string ContentTransferEncoding { get; set; } = string.Empty;
+        public Dictionary<string, string> Headers { get; set; } = new();
     }
 }
