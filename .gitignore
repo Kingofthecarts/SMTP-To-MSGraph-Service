@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /SMTP Service/config/smtp-config.json
 /SMTP Service/config
+/SMTP Service/test-smtp-auth.ps1
