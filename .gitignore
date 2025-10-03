@@ -399,3 +399,6 @@ FodyWeavers.xsd
 /SMTP Service/config/Setup-GitHubToken.ps1
 /SMTP Service/config/smtp-config.template.json
 /SMTP Service/config/Test-GitHubConfig.ps1
+/SMTP Service/docs/01_FLOW_AND_BREAKDOWN.txt
+/SMTP Service/docs/02_END_USER_GUIDE.txt
+/SMTP Service/docs/03_PROGRAMMER_ADMIN_GUIDE.txt
