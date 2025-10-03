@@ -1,12 +1,38 @@
 using SMTP_Service;
 using SMTP_Service.Services;
 using SMTP_Service.UI;
+using SMTP_Service.Helpers;
 using Serilog;
 using System.Windows.Forms;
 using Microsoft.Extensions.Hosting.WindowsServices;
 
 // Check for pending update script replacement
 CheckAndReplaceUpdateScript();
+
+// Check if service is already running
+var serviceAlreadyRunning = ServiceMutexManager.IsServiceRunning();
+
+if (serviceAlreadyRunning)
+{
+    Console.WriteLine("===========================================");
+    Console.WriteLine("   SERVICE ALREADY RUNNING");
+    Console.WriteLine("===========================================");
+    Console.WriteLine();
+    Console.WriteLine("Detected existing service instance.");
+    Console.WriteLine("Launching configuration UI only...");
+    Console.WriteLine();
+    
+    Log.Information("Detected existing service instance - launching UI-only mode");
+    
+    // Just show tray icon for configuration
+    Application.EnableVisualStyles();
+    Application.SetCompatibleTextRenderingDefault(false);
+    Application.Run(new TrayApplicationContext(uiOnlyMode: true));
+    
+    Log.Information("UI-only instance closed");
+    Log.CloseAndFlush();
+    return; // Exit - don't start host
+}
 
 // Load configuration to check run mode
 var initialConfigManager = new SMTP_Service.Managers.ConfigurationManager();
@@ -56,7 +82,7 @@ else if (runAsConsoleWithTray)
 else
 {
     runModeName = "Service Mode";
-    runModeDescription = "RunMode 0: Service mode with tray icon (console hidden)";
+    runModeDescription = "RunMode 0: Pure background service (no UI)";
 }
 
 // Determine source of run mode
@@ -108,28 +134,29 @@ if (runAsTray)
 }
 
 // Check if running in console mode with tray icon
-// Mode 0 (default) and Mode 1 both show tray, Mode 0 hides console initially
-bool showTray = runAsConsoleWithTray || (!runAsTray && !runAsConsoleWithTray); // Mode 0 or Mode 1
-bool hideConsoleOnStart = !runAsConsoleWithTray && !runAsTray; // Only Mode 0
+bool showTray = runAsConsoleWithTray || runAsTray; // Mode 1 or Mode 2
+bool isMode0 = !runAsTray && !runAsConsoleWithTray; // Pure service mode
 
 if (showTray)
 {
-    if (hideConsoleOnStart)
+    if (runAsConsoleWithTray)
     {
-        Console.WriteLine("Starting in SERVICE MODE with TRAY...");
-        Console.WriteLine("Console will be hidden - use tray icon to show/hide console");
+        Console.WriteLine("Starting in CONSOLE + TRAY mode...");
+        Console.WriteLine("Console window visible with system tray icon");
+        Console.WriteLine("You can close the console from the tray menu");
     }
     else
     {
-        Console.WriteLine("Starting in CONSOLE + TRAY mode...");
-        Console.WriteLine("Console window will remain visible with system tray icon");
+        Console.WriteLine("Starting in TRAY ONLY mode...");
+        Console.WriteLine("No console window - system tray icon only");
     }
     Console.WriteLine("============================================\n");
 }
-else
+else if (isMode0)
 {
-    Console.WriteLine("Starting in TRAY ONLY mode...");
-    Console.WriteLine("No console window - system tray icon only");
+    Console.WriteLine("Starting in SERVICE MODE...");
+    Console.WriteLine("Pure background service - no UI");
+    Console.WriteLine("To configure: run another instance while service is running");
     Console.WriteLine("============================================\n");
 }
 
@@ -149,6 +176,20 @@ try
     Log.Information($"SMTP Port: {config.SmtpSettings.Port}");
     Log.Information($"Authentication Required: {config.SmtpSettings.RequireAuthentication}");
     Log.Information($"Configured Users: {config.SmtpSettings.Credentials.Count}");
+    
+    // Acquire service mutex (marks this as the service instance)
+    var serviceMutex = new ServiceMutexManager();
+    bool isServiceOwner = serviceMutex.TryAcquireService();
+    
+    if (!isServiceOwner)
+    {
+        // This shouldn't happen since we checked earlier, but just in case
+        Console.WriteLine("ERROR: Could not acquire service mutex. Another instance may have started.");
+        Log.Error("Failed to acquire service mutex");
+        return;
+    }
+    
+    Log.Information("Service mutex acquired - this is the service instance");
     
     Console.WriteLine("Creating host builder...");
     
@@ -202,18 +243,16 @@ try
     SmtpLoggerFactory.Factory = loggerFactory;
     Console.WriteLine("Logger factory configured");
 
-    // If --console mode or Mode 0, start the tray icon in a separate thread
+    // Start the tray icon in a separate thread for Mode 1 (Console+Tray) or Mode 2 (Tray Only)
     if (showTray)
     {
         Console.WriteLine("Starting system tray icon...");
         
-        TrayApplicationContext? trayContext = null;
         var trayThread = new Thread(() =>
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            trayContext = new TrayApplicationContext();
-            Application.Run(trayContext);
+            Application.Run(new TrayApplicationContext(uiOnlyMode: false));
         });
         trayThread.SetApartmentState(ApartmentState.STA);
         trayThread.IsBackground = true;
@@ -222,14 +261,6 @@ try
         // Wait a moment for the tray to initialize
         Thread.Sleep(500);
         Console.WriteLine("System tray icon started. You can right-click it to access configuration.");
-        
-        // If Mode 0, hide the console after a brief delay to let startup messages show
-        if (hideConsoleOnStart)
-        {
-            Thread.Sleep(1500); // 1.5 more seconds to see startup messages
-            trayContext?.HideConsole();
-            Console.WriteLine("Console hidden. Use the system tray icon to show/hide console.");
-        }
     }
 
     Console.WriteLine("Starting host... (SMTP server should start now)");

@@ -13,6 +13,7 @@ namespace SMTP_Service.UI
         private const string ServiceName = "SMTP to Graph Relay";
         private ToolStripMenuItem? _consoleMenuItem;
         private bool _consoleVisible = true; // Track console visibility state
+        private bool _uiOnlyMode = false; // True if this is just a UI instance (service already running)
         
         // Windows API for console window manipulation
         [DllImport("kernel32.dll")]
@@ -21,15 +22,19 @@ namespace SMTP_Service.UI
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         
+        [DllImport("kernel32.dll")]
+        private static extern bool FreeConsole();
+        
         private const int SW_HIDE = 0;
         private const int SW_SHOW = 5;
         
         // Static instance to allow other forms to refresh the menu
         public static TrayApplicationContext? Instance { get; private set; }
 
-        public TrayApplicationContext()
+        public TrayApplicationContext(bool uiOnlyMode = false)
         {
             Instance = this;
+            _uiOnlyMode = uiOnlyMode;
             InitializeTrayIcon();
         }
 
@@ -37,10 +42,12 @@ namespace SMTP_Service.UI
         {
             _contextMenu = new ContextMenuStrip();
             
-            // Add Console toggle menu item first if console is available
-            if (GetConsoleWindow() != IntPtr.Zero)
+            // Add Console close menu item only if:
+            // 1. Console is available AND
+            // 2. Not in UI-only mode (UI-only has no console to close)
+            if (GetConsoleWindow() != IntPtr.Zero && !_uiOnlyMode)
             {
-                _consoleMenuItem = new ToolStripMenuItem("Hide Console", null, ToggleConsole);
+                _consoleMenuItem = new ToolStripMenuItem("Close Console", null, CloseConsole);
                 _contextMenu.Items.Add(_consoleMenuItem);
                 _contextMenu.Items.Add(new ToolStripSeparator());
             }
@@ -84,7 +91,9 @@ namespace SMTP_Service.UI
                 Icon = SystemIcons.Application,
                 ContextMenuStrip = _contextMenu,
                 Visible = true,
-                Text = "SMTP to Graph Relay Service"
+                Text = _uiOnlyMode 
+                    ? "SMTP to Graph Relay - Configuration UI" 
+                    : "SMTP to Graph Relay Service"
             };
 
             _trayIcon.DoubleClick += (s, e) => ShowConfiguration(s, e);
@@ -104,50 +113,56 @@ namespace SMTP_Service.UI
             }
         }
         
-        private void ToggleConsole(object? sender, EventArgs e)
+        private void CloseConsole(object? sender, EventArgs e)
         {
             var consoleWindow = GetConsoleWindow();
             if (consoleWindow == IntPtr.Zero)
             {
                 MessageBox.Show(
-                    "Console window is not available.\n\n" +
-                    "This feature is only available when running in console mode.",
+                    "Console window is not available.",
                     "Console Not Available",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
                 return;
             }
             
-            if (_consoleVisible)
+            var result = MessageBox.Show(
+                "Are you sure you want to close the console?\n\n" +
+                "This will free console memory but you won't be able to see " +
+                "real-time logs anymore.\n\n" +
+                "The application will continue running via the system tray.\n\n" +
+                "You can still view logs using 'View Logs' from the tray menu.",
+                "Close Console?",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            
+            if (result == DialogResult.Yes)
             {
-                // Hide console
-                ShowWindow(consoleWindow, SW_HIDE);
+                // Actually free the console (releases memory)
+                FreeConsole();
                 _consoleVisible = false;
+                
+                Log.Information("Console window closed by user - freed console memory");
+                
+                // Remove console menu item since console is gone
                 if (_consoleMenuItem != null)
-                    _consoleMenuItem.Text = "Show Console";
-                Log.Information("Console window hidden via system tray");
-            }
-            else
-            {
-                // Show console
-                ShowWindow(consoleWindow, SW_SHOW);
-                _consoleVisible = true;
-                if (_consoleMenuItem != null)
-                    _consoleMenuItem.Text = "Hide Console";
-                Log.Information("Console window shown via system tray");
-            }
-        }
-        
-        public void HideConsole()
-        {
-            var consoleWindow = GetConsoleWindow();
-            if (consoleWindow != IntPtr.Zero)
-            {
-                ShowWindow(consoleWindow, SW_HIDE);
-                _consoleVisible = false;
-                if (_consoleMenuItem != null)
-                    _consoleMenuItem.Text = "Show Console";
-                Log.Information("Console window initially hidden on startup");
+                {
+                    _contextMenu.Items.Remove(_consoleMenuItem);
+                    // Also remove the separator after it if it exists
+                    if (_contextMenu.Items.Count > 0 && _contextMenu.Items[0] is ToolStripSeparator)
+                    {
+                        _contextMenu.Items.RemoveAt(0);
+                    }
+                    _consoleMenuItem = null;
+                }
+                
+                MessageBox.Show(
+                    "Console closed successfully.\n\n" +
+                    "The application continues running in the background.\n" +
+                    "Use 'View Logs' to see log files.",
+                    "Console Closed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
             }
         }
 
@@ -166,10 +181,18 @@ namespace SMTP_Service.UI
 
                 if (service != null)
                 {
-                    MessageBox.Show(
-                        $"Service Status: {service.Status}\n" +
+                    var statusMessage = $"Service Status: {service.Status}\n" +
                         $"Service Name: {service.ServiceName}\n" +
-                        $"Display Name: {service.DisplayName}",
+                        $"Display Name: {service.DisplayName}";
+                    
+                    if (_uiOnlyMode)
+                    {
+                        statusMessage += "\n\nMode: Configuration UI Only\n" +
+                            "(Service running in separate process)";
+                    }
+                    
+                    MessageBox.Show(
+                        statusMessage,
                         "Service Status",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
@@ -393,13 +416,12 @@ namespace SMTP_Service.UI
             // Clear existing menu items
             _contextMenu.Items.Clear();
             
-            // Add Console toggle menu item first if console is available
-            if (GetConsoleWindow() != IntPtr.Zero)
+            // Add Console close menu item only if:
+            // 1. Console is available AND
+            // 2. Not in UI-only mode
+            if (GetConsoleWindow() != IntPtr.Zero && !_uiOnlyMode)
             {
-                _consoleMenuItem = new ToolStripMenuItem(
-                    _consoleVisible ? "Hide Console" : "Show Console", 
-                    null, 
-                    ToggleConsole);
+                _consoleMenuItem = new ToolStripMenuItem("Close Console", null, CloseConsole);
                 _contextMenu.Items.Add(_consoleMenuItem);
                 _contextMenu.Items.Add(new ToolStripSeparator());
             }

@@ -525,7 +525,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(200, 20),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
-            cmbRunMode.Items.Add("Service Mode with Tray");
+            cmbRunMode.Items.Add("Service Mode (no UI)");
             cmbRunMode.Items.Add("Console with Tray");
             cmbRunMode.Items.Add("Tray Only");
             cmbRunMode.SelectedIndex = 0;
@@ -538,10 +538,10 @@ namespace SMTP_Service.UI
             var lblRunModeInfo = new Label
             {
                 Text = "This setting determines how the application runs when started without command line arguments.\n" +
-                       "• Service Mode with Tray: Console hidden, system tray icon shown (toggle console from tray)\n" +
-                       "• Console with Tray: Shows console with logs + system tray icon (best for monitoring)\n" +
-                       "• Tray Only: System tray icon only, no console (minimal interface)\n\n" +
-                       "Note: Command line arguments (--console or --tray) will override this setting.",
+                       "• Service Mode: Pure background service (no console, no tray) - for production\n" +
+                       "• Console with Tray: Shows console + system tray (can close console from tray)\n" +
+                       "• Tray Only: System tray icon only, no console (clean interface)\n\n" +
+                       "Note: If service is running, launching app again shows UI-only mode for configuration.",
                 Location = new System.Drawing.Point(20, y),
                 Size = new System.Drawing.Size(540, 110),
                 AutoSize = false,
