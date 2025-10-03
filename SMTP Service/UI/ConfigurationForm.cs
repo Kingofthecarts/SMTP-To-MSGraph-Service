@@ -14,6 +14,7 @@ namespace SMTP_Service.UI
         // SMTP Settings Controls
         private TextBox txtSmtpPort = null!;
         private CheckBox chkRequireAuth = null!;
+        private NumericUpDown numMaxMessageSizeKb = null!;
         private TextBox txtUsername = null!;
         private TextBox txtPassword = null!;
         private Button btnAddUser = null!;
@@ -214,6 +215,23 @@ namespace SMTP_Service.UI
 
             y += 40;
 
+            // Max Message Size
+            var lblMaxSize = new Label { Text = "Max Message Size (MB):", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(150, 20) };
+            numMaxMessageSizeKb = new NumericUpDown 
+            { 
+                Location = new System.Drawing.Point(180, y), 
+                Size = new System.Drawing.Size(120, 20),
+                Minimum = 1,
+                Maximum = 100,
+                Value = 50,
+                Increment = 1,
+                DecimalPlaces = 0
+            };
+            tab.Controls.Add(lblMaxSize);
+            tab.Controls.Add(numMaxMessageSizeKb);
+
+            y += 40;
+
             // Require Authentication
             chkRequireAuth = new CheckBox 
             { 
@@ -230,12 +248,15 @@ namespace SMTP_Service.UI
             {
                 Text = "Port Configuration:\n\n" +
                        "Default SMTP port is 25 for standard SMTP relay.\n\n" +
+                       "Message Size Limit:\n" +
+                       "• Default is 50 MB. Range: 1 MB to 100 MB\n" +
+                       "• Messages exceeding this limit will be rejected\n\n" +
                        "Authentication Modes:\n" +
                        "• When ENABLED: Authentication is REQUIRED - only authorized users can send emails\n" +
                        "• When DISABLED: Authentication is OPTIONAL - both authenticated and unauthenticated connections are allowed\n\n" +
                        "Note: Configure authorized users in the Users tab. Changes require service restart.",
                 Location = new System.Drawing.Point(20, y),
-                Size = new System.Drawing.Size(520, 170),
+                Size = new System.Drawing.Size(520, 200),
                 AutoSize = false,
                 ForeColor = System.Drawing.Color.DarkBlue
             };
@@ -378,20 +399,98 @@ namespace SMTP_Service.UI
 
             y += 50;
 
-            // Instructions
+            // Instructions with clickable link
             var lblInstructions = new Label
             {
-                Text = "To configure MS Graph:\n" +
-                       "1. Register an app in Azure AD\n" +
-                       "2. Grant Mail.Send permission\n" +
-                       "3. Create a client secret\n" +
-                       "4. Copy Tenant ID, Client ID, and Secret here\n\n" +
-                       "Use 'Test Connection' above to verify your configuration.",
+                Text = "To configure MS Graph:",
                 Location = new System.Drawing.Point(20, y),
-                Size = new System.Drawing.Size(500, 120),
-                AutoSize = false
+                Size = new System.Drawing.Size(500, 20),
+                AutoSize = false,
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
             tab.Controls.Add(lblInstructions);
+
+            y += 25;
+
+            // Step 1 with clickable link
+            var lblStep1 = new Label
+            {
+                Text = "1. Register an app in Azure AD at:",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(183, 20),
+                AutoSize = false
+            };
+            tab.Controls.Add(lblStep1);
+
+            var linkEntra = new LinkLabel
+            {
+                Text = "https://entra.microsoft.com/",
+                Location = new System.Drawing.Point(203, y),
+                Size = new System.Drawing.Size(250, 20),
+                AutoSize = true
+            };
+            linkEntra.LinkClicked += (s, e) =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "https://entra.microsoft.com/",
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error opening link: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            tab.Controls.Add(linkEntra);
+
+            y += 25;
+
+            var lblStep2 = new Label
+            {
+                Text = "2. Grant Mail.Send permission",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                AutoSize = false
+            };
+            tab.Controls.Add(lblStep2);
+
+            y += 25;
+
+            var lblStep3 = new Label
+            {
+                Text = "3. Create a client secret",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                AutoSize = false
+            };
+            tab.Controls.Add(lblStep3);
+
+            y += 25;
+
+            var lblStep4 = new Label
+            {
+                Text = "4. Copy Tenant ID, Client ID, and Secret here",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                AutoSize = false
+            };
+            tab.Controls.Add(lblStep4);
+
+            y += 30;
+
+            var lblTestNote = new Label
+            {
+                Text = "Use 'Test Connection' above to verify your configuration.",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                AutoSize = false,
+                ForeColor = System.Drawing.Color.DarkBlue,
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Italic)
+            };
+            tab.Controls.Add(lblTestNote);
         }
 
         private void InitializeQueueTab(TabPage tab)
@@ -1131,6 +1230,7 @@ namespace SMTP_Service.UI
         {
             // Load SMTP settings
             txtSmtpPort.Text = _config.SmtpSettings.Port.ToString();
+            numMaxMessageSizeKb.Value = _config.SmtpSettings.MaxMessageSizeKb / 1024; // Convert KB to MB for display
             chkRequireAuth.Checked = _config.SmtpSettings.RequireAuthentication;
             
             lstUsers.Items.Clear();
@@ -1200,6 +1300,7 @@ namespace SMTP_Service.UI
                 {
                     txtTenantId.Text = MaskGuid(_actualTenantId);
                 }
+                MarkAsChanged(); // Ensure save button enables when editing these fields
             }
         }
 
@@ -1223,6 +1324,7 @@ namespace SMTP_Service.UI
                 {
                     txtClientId.Text = MaskGuid(_actualClientId);
                 }
+                MarkAsChanged(); // Ensure save button enables when editing these fields
             }
         }
 
@@ -1230,23 +1332,38 @@ namespace SMTP_Service.UI
         {
             // SMTP Settings
             txtSmtpPort.TextChanged += (s, e) => MarkAsChanged();
+            txtSmtpPort.Leave += (s, e) => MarkAsChanged();
+            numMaxMessageSizeKb.ValueChanged += (s, e) => MarkAsChanged();
+            numMaxMessageSizeKb.Leave += (s, e) => MarkAsChanged();
+            numMaxMessageSizeKb.KeyUp += (s, e) => MarkAsChanged();
             chkRequireAuth.CheckedChanged += (s, e) => MarkAsChanged();
             txtUsername.TextChanged += (s, e) => MarkAsChanged();
+            txtUsername.Leave += (s, e) => MarkAsChanged();
             txtPassword.TextChanged += (s, e) => MarkAsChanged();
+            txtPassword.Leave += (s, e) => MarkAsChanged();
 
             // Graph Settings
             txtTenantId.TextChanged += (s, e) => MarkAsChanged();
+            txtTenantId.Leave += (s, e) => MarkAsChanged();
             txtClientId.TextChanged += (s, e) => MarkAsChanged();
+            txtClientId.Leave += (s, e) => MarkAsChanged();
             txtClientSecret.TextChanged += (s, e) => MarkAsChanged();
+            txtClientSecret.Leave += (s, e) => MarkAsChanged();
             txtSenderEmail.TextChanged += (s, e) => MarkAsChanged();
+            txtSenderEmail.Leave += (s, e) => MarkAsChanged();
 
             // Queue Settings
             numMaxRetry.ValueChanged += (s, e) => MarkAsChanged();
+            numMaxRetry.Leave += (s, e) => MarkAsChanged();
+            numMaxRetry.KeyUp += (s, e) => MarkAsChanged();
             numRetryDelay.ValueChanged += (s, e) => MarkAsChanged();
+            numRetryDelay.Leave += (s, e) => MarkAsChanged();
+            numRetryDelay.KeyUp += (s, e) => MarkAsChanged();
 
             // Application Settings
             cmbRunMode.SelectedIndexChanged += (s, e) => MarkAsChanged();
             txtLogLocation.TextChanged += (s, e) => MarkAsChanged();
+            txtLogLocation.Leave += (s, e) => MarkAsChanged();
         }
 
         private void MarkAsChanged()
@@ -1534,6 +1651,7 @@ namespace SMTP_Service.UI
 
                 // Update configuration
                 _config.SmtpSettings.Port = port;
+                _config.SmtpSettings.MaxMessageSizeKb = (int)numMaxMessageSizeKb.Value * 1024; // Convert MB to KB for storage
                 _config.SmtpSettings.RequireAuthentication = chkRequireAuth.Checked;
 
                 // Use actual values for Tenant ID and Client ID (not the masked display values)

@@ -141,7 +141,7 @@ namespace SMTP_Service.Managers
                             Password = "changeme" 
                         }
                     },
-                    MaxMessageSizeKb = 10240,
+                    MaxMessageSizeKb = 51200,
                     EnableTls = false
                 },
                 GraphSettings = new GraphSettings

@@ -1,5 +1,22 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 2.1.0 - October 2, 2025
+
+**Configuration UI Improvements**
+
+Enhanced configuration interface with better usability and increased default message size limit.
+
+**Key Changes:**
+- Added clickable link to Azure Entra admin center (https://entra.microsoft.com/) in MS Graph Settings
+- Increased default max message size from 10MB to 50MB (51200 KB)
+- Changed message size UI from KB to MB for easier configuration (range: 1-100 MB)
+- Improved save button responsiveness - now enables immediately when typing or editing any field
+- Added Leave and KeyUp event handlers to all text boxes and numeric controls
+
+**Impact:** More intuitive configuration experience with larger default message size suitable for modern email needs.
+
+---
+
 ## VERSION 2.0.1 - October 2, 2025
 
 **Update System Improvements**

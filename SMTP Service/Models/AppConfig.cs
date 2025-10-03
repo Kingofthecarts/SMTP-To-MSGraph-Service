@@ -20,7 +20,7 @@ namespace SMTP_Service.Models
         public int Port { get; set; } = 25;
         public bool RequireAuthentication { get; set; } = true;
         public List<SmtpCredential> Credentials { get; set; } = new();
-        public int MaxMessageSizeKb { get; set; } = 10240; // 10MB default
+        public int MaxMessageSizeKb { get; set; } = 51200; // 50MB default
         public bool EnableTls { get; set; } = false;
     }
 
