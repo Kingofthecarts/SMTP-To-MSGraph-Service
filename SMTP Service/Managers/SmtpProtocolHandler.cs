@@ -357,11 +357,20 @@ namespace SMTP_Service.Managers
 
                     ParseHeaders(headers, email);
                     
-                    // Decode the body based on Content-Transfer-Encoding
-                    email.Body = DecodeBody(body, email.ContentTransferEncoding);
-                    
-                    // Convert body to UTF-8 if needed
-                    email.Body = EnsureUtf8(email.Body, email.Charset);
+                    // Check if this is a multipart message
+                    if (email.ContentType.Contains("multipart/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("Detected multipart message, parsing MIME parts");
+                        ParseMimeMultipart(body, email);
+                    }
+                    else
+                    {
+                        // Decode the body based on Content-Transfer-Encoding
+                        email.Body = DecodeBody(body, email.ContentTransferEncoding);
+                        
+                        // Convert body to UTF-8 if needed
+                        email.Body = EnsureUtf8(email.Body, email.Charset);
+                    }
                 }
                 else
                 {
@@ -621,5 +630,250 @@ namespace SMTP_Service.Managers
 
         public bool IsAuthenticated => _isAuthenticated;
         public bool InDataMode => _inDataMode;
+        
+        private void ParseMimeMultipart(string body, EmailMessage email)
+        {
+            try
+            {
+                // Extract boundary from Content-Type header
+                var boundaryMatch = Regex.Match(email.ContentType, "boundary\\s*=\\s*[\"']?([^\"';\\s]+)", RegexOptions.IgnoreCase);
+                if (!boundaryMatch.Success)
+                {
+                    _logger.LogWarning("No boundary found in multipart message");
+                    email.Body = body;
+                    return;
+                }
+                
+                var boundary = boundaryMatch.Groups[1].Value;
+                _logger.LogInformation($"MIME boundary: {boundary}");
+                
+                // Split by boundary
+                var delimiter = "--" + boundary;
+                var endDelimiter = "--" + boundary + "--";
+                
+                var parts = body.Split(new[] { delimiter }, StringSplitOptions.RemoveEmptyEntries);
+                
+                foreach (var part in parts)
+                {
+                    if (part.Trim() == "--" || string.IsNullOrWhiteSpace(part))
+                        continue;
+                        
+                    ParseMimePart(part, email);
+                }
+                
+                _logger.LogInformation($"Parsed multipart message: {email.Attachments.Count} attachments found");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing MIME multipart: {ex.Message}");
+                email.Body = body; // Fallback to raw body
+            }
+        }
+        
+        private void ParseMimePart(string part, EmailMessage email)
+        {
+            try
+            {
+                // Find headers and content separation
+                var headerEndIndex = part.IndexOf("\r\n\r\n");
+                if (headerEndIndex == -1)
+                    headerEndIndex = part.IndexOf("\n\n");
+                    
+                if (headerEndIndex == -1)
+                {
+                    _logger.LogWarning("No header-body separation found in MIME part");
+                    return;
+                }
+                
+                var partHeaders = part.Substring(0, headerEndIndex);
+                var partContent = part.Substring(headerEndIndex + (part[headerEndIndex] == '\r' ? 4 : 2));
+                
+                // Parse part headers
+                var contentType = "";
+                var contentTransferEncoding = "";
+                var contentDisposition = "";
+                var charset = "utf-8";
+                var fileName = "";
+                var contentId = "";
+                
+                var headerLines = partHeaders.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                string currentHeader = "";
+                string currentValue = "";
+                
+                foreach (var line in headerLines)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+                        
+                    // Handle header continuation
+                    if (line.StartsWith(" ") || line.StartsWith("\t"))
+                    {
+                        currentValue += " " + line.Trim();
+                        continue;
+                    }
+                    
+                    // Process previous header
+                    if (!string.IsNullOrEmpty(currentHeader))
+                    {
+                        ProcessPartHeader(currentHeader, currentValue, ref contentType, ref contentTransferEncoding, 
+                            ref contentDisposition, ref charset, ref fileName, ref contentId);
+                    }
+                    
+                    // Start new header
+                    var colonIndex = line.IndexOf(':');
+                    if (colonIndex > 0)
+                    {
+                        currentHeader = line.Substring(0, colonIndex).Trim();
+                        currentValue = line.Substring(colonIndex + 1).Trim();
+                    }
+                }
+                
+                // Process last header
+                if (!string.IsNullOrEmpty(currentHeader))
+                {
+                    ProcessPartHeader(currentHeader, currentValue, ref contentType, ref contentTransferEncoding, 
+                        ref contentDisposition, ref charset, ref fileName, ref contentId);
+                }
+                
+                _logger.LogInformation($"MIME Part - Type: {contentType}, Disposition: {contentDisposition}, Filename: {fileName}");
+                
+                // Determine if this is an attachment or the message body
+                var isAttachment = !string.IsNullOrEmpty(contentDisposition) && 
+                    (contentDisposition.StartsWith("attachment", StringComparison.OrdinalIgnoreCase) || 
+                     !string.IsNullOrEmpty(fileName));
+                     
+                var isInline = contentDisposition.StartsWith("inline", StringComparison.OrdinalIgnoreCase);
+                
+                if (isAttachment || isInline)
+                {
+                    // This is an attachment
+                    var decodedContent = DecodeAttachmentContent(partContent, contentTransferEncoding);
+                    
+                    var attachment = new EmailAttachment
+                    {
+                        FileName = !string.IsNullOrEmpty(fileName) ? fileName : "attachment",
+                        ContentType = !string.IsNullOrEmpty(contentType) ? contentType : "application/octet-stream",
+                        Content = decodedContent,
+                        Size = decodedContent.Length,
+                        ContentId = contentId,
+                        IsInline = isInline
+                    };
+                    
+                    email.Attachments.Add(attachment);
+                    _logger.LogInformation($"Added attachment: {attachment.FileName} ({attachment.Size} bytes)");
+                }
+                else if (contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+                {
+                    // HTML body
+                    var decodedBody = DecodeBody(partContent, contentTransferEncoding);
+                    email.Body = EnsureUtf8(decodedBody, charset);
+                    email.IsHtml = true;
+                    _logger.LogInformation("Parsed HTML body from MIME part");
+                }
+                else if (contentType.Contains("text/plain", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Plain text body (only set if we don't already have an HTML body)
+                    if (string.IsNullOrEmpty(email.Body) || !email.IsHtml)
+                    {
+                        var decodedBody = DecodeBody(partContent, contentTransferEncoding);
+                        email.Body = EnsureUtf8(decodedBody, charset);
+                        email.IsHtml = false;
+                        _logger.LogInformation("Parsed plain text body from MIME part");
+                    }
+                }
+                else if (contentType.Contains("multipart/", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Nested multipart (e.g., multipart/alternative inside multipart/mixed)
+                    _logger.LogInformation("Detected nested multipart, recursing");
+                    var tempEmail = new EmailMessage { ContentType = contentType };
+                    ParseMimeMultipart(partContent, tempEmail);
+                    
+                    // Copy body and attachments from nested parsing
+                    if (!string.IsNullOrEmpty(tempEmail.Body))
+                    {
+                        email.Body = tempEmail.Body;
+                        email.IsHtml = tempEmail.IsHtml;
+                    }
+                    email.Attachments.AddRange(tempEmail.Attachments);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error parsing MIME part: {ex.Message}");
+            }
+        }
+        
+        private void ProcessPartHeader(string headerName, string headerValue, ref string contentType, 
+            ref string contentTransferEncoding, ref string contentDisposition, ref string charset, 
+            ref string fileName, ref string contentId)
+        {
+            var headerNameLower = headerName.ToLower();
+            
+            switch (headerNameLower)
+            {
+                case "content-type":
+                    contentType = headerValue;
+                    // Extract charset
+                    var charsetMatch = Regex.Match(headerValue, "charset\\s*=\\s*[\"']?([^\"';\\s]+)", RegexOptions.IgnoreCase);
+                    if (charsetMatch.Success)
+                    {
+                        charset = charsetMatch.Groups[1].Value;
+                    }
+                    // Extract filename from Content-Type (some clients put it here)
+                    var nameMatch = Regex.Match(headerValue, "name\\s*=\\s*[\"']?([^\"';]+)", RegexOptions.IgnoreCase);
+                    if (nameMatch.Success && string.IsNullOrEmpty(fileName))
+                    {
+                        fileName = DecodeHeaderValue(nameMatch.Groups[1].Value.Trim('"'));
+                    }
+                    break;
+                    
+                case "content-transfer-encoding":
+                    contentTransferEncoding = headerValue.Trim().ToLower();
+                    break;
+                    
+                case "content-disposition":
+                    contentDisposition = headerValue;
+                    // Extract filename from Content-Disposition
+                    var filenameMatch = Regex.Match(headerValue, "filename\\s*=\\s*[\"']?([^\"';]+)", RegexOptions.IgnoreCase);
+                    if (filenameMatch.Success)
+                    {
+                        fileName = DecodeHeaderValue(filenameMatch.Groups[1].Value.Trim('"'));
+                    }
+                    break;
+                    
+                case "content-id":
+                    contentId = headerValue.Trim('<', '>');
+                    break;
+            }
+        }
+        
+        private byte[] DecodeAttachmentContent(string content, string transferEncoding)
+        {
+            try
+            {
+                switch (transferEncoding.ToLower())
+                {
+                    case "base64":
+                        // Remove whitespace and decode
+                        var cleanBase64 = Regex.Replace(content, @"\s+", "");
+                        return Convert.FromBase64String(cleanBase64);
+                        
+                    case "quoted-printable":
+                        var decoded = DecodeQuotedPrintable(content);
+                        return Encoding.UTF8.GetBytes(decoded);
+                        
+                    case "7bit":
+                    case "8bit":
+                    case "binary":
+                    default:
+                        return Encoding.UTF8.GetBytes(content);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error decoding attachment content: {ex.Message}");
+                return Encoding.UTF8.GetBytes(content);
+            }
+        }
     }
 }

@@ -1,5 +1,56 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 3.0.0 - October 3, 2025
+
+**Test Email Attachments & Bug Fixes**
+
+Major update adding file attachment support to the Test Email feature and resolving compilation issues.
+
+### New Features
+
+**Test Email Attachments**
+- Added ability to attach files to test emails
+- Support for any file type up to 100 MB
+- Browse button to select files with real-time file info display
+- Clear button to remove selected attachment
+- Automatic content type detection for common file formats (PDF, DOCX, images, archives, etc.)
+- File size validation with user-friendly error messages
+- Success confirmation shows attachment details
+
+### Bug Fixes
+
+- Fixed attachment list type incompatibility with Microsoft Graph API
+- Fixed attachment size type casting error
+- Removed invalid reference file causing compilation errors
+- Suppressed null reference warnings in Statistics tab UI controls
+- All compilation errors and warnings resolved
+
+### Impact
+
+Users can now fully test email delivery including attachments before deploying. The test email feature provides complete end-to-end verification through the Graph API without needing external SMTP clients.
+
+---
+
+## VERSION 2.2.0 - October 3, 2025
+
+**Attachment Support Added**
+
+Implemented full MIME multipart parsing with comprehensive attachment support for emails.
+
+**Key Changes:**
+- Added complete attachment support for SMTP emails sent via Microsoft Graph
+- Implemented MIME multipart message parsing with boundary detection
+- Support for Base64, Quoted-Printable, and other transfer encodings
+- Handles both regular attachments and inline attachments (with Content-ID)
+- Supports nested multipart messages (e.g., multipart/alternative inside multipart/mixed)
+- Automatically detects and extracts filenames from Content-Type and Content-Disposition headers
+- Logs attachment details (filename, size, inline status) for debugging
+- No size limit on individual attachments (overall message size limit still applies)
+
+**Impact:** Devices and applications can now send emails with attachments through the SMTP relay. Fully compatible with scanners, backup software, and email clients.
+
+---
+
 ## VERSION 2.1.0 - October 2, 2025
 
 **Configuration UI Improvements**
@@ -207,7 +258,6 @@ Compatible with Veeam, network printers, IoT devices, and legacy applications.
 ## Known Limitations
 
 - No STARTTLS/TLS encryption
-- No attachment support
 - No SMTP over SSL (port 465)
 - Queue is in-memory only (lost on restart)
 - No rate limiting
@@ -215,7 +265,6 @@ Compatible with Veeam, network printers, IoT devices, and legacy applications.
 ## Upcoming Features
 
 - Full TLS encryption support
-- Email attachment support
 - Database-backed queue
 - Web-based configuration
 - Rate limiting

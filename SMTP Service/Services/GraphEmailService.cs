@@ -8,6 +8,7 @@ using GraphRecipient = Microsoft.Graph.Models.Recipient;
 using GraphEmailAddress = Microsoft.Graph.Models.EmailAddress;
 using GraphItemBody = Microsoft.Graph.Models.ItemBody;
 using GraphBodyType = Microsoft.Graph.Models.BodyType;
+using GraphFileAttachment = Microsoft.Graph.Models.FileAttachment;
 
 namespace SMTP_Service.Services
 {
@@ -137,6 +138,35 @@ namespace SMTP_Service.Services
                     }
                 };
 
+                // Add attachments if any
+                if (email.Attachments.Any())
+                {
+                    _logger.LogInformation($"Adding {email.Attachments.Count} attachments to email");
+                    message.Attachments = new List<Microsoft.Graph.Models.Attachment>();
+                    
+                    foreach (var attachment in email.Attachments)
+                    {
+                        var graphAttachment = new GraphFileAttachment
+                        {
+                            OdataType = "#microsoft.graph.fileAttachment",
+                            Name = attachment.FileName,
+                            ContentType = attachment.ContentType,
+                            ContentBytes = attachment.Content,
+                            Size = (int?)attachment.Size,
+                            IsInline = attachment.IsInline
+                        };
+                        
+                        // Add ContentId for inline attachments
+                        if (attachment.IsInline && !string.IsNullOrEmpty(attachment.ContentId))
+                        {
+                            graphAttachment.ContentId = attachment.ContentId;
+                        }
+                        
+                        message.Attachments.Add(graphAttachment);
+                        _logger.LogInformation($"Added attachment: {attachment.FileName} ({attachment.Size} bytes, Inline: {attachment.IsInline})");
+                    }
+                }
+
                 var requestBody = new SendMailPostRequestBody
                 {
                     Message = message,
@@ -146,7 +176,7 @@ namespace SMTP_Service.Services
                 // Send the email using the configured sender account
                 await _graphClient.Users[_settings.SenderEmail].SendMail.PostAsync(requestBody);
 
-                _logger.LogInformation($"Email sent via Graph API: From={email.From}, To={string.Join(", ", email.To)}, Subject={email.Subject}");
+                _logger.LogInformation($"Email sent via Graph API: From={email.From}, To={string.Join(", ", email.To)}, Subject={email.Subject}, Attachments={email.Attachments.Count}");
                 return true;
             }
             catch (Exception ex)

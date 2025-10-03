@@ -18,6 +18,9 @@ namespace SMTP_Service.Models
         public string ContentTransferEncoding { get; set; } = string.Empty;
         public Dictionary<string, string> Headers { get; set; } = new();
         
+        // Attachment support
+        public List<EmailAttachment> Attachments { get; set; } = new();
+        
         // Track authenticated user for statistics
         public string? AuthenticatedUser { get; set; }
     }

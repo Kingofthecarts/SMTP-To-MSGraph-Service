@@ -43,6 +43,10 @@ namespace SMTP_Service.UI
         private TextBox txtTestBody = null!;
         private CheckBox chkTestHtml = null!;
         private Button btnSendTest = null!;
+        private Button btnBrowseAttachment = null!;
+        private Button btnClearAttachment = null!;
+        private Label lblAttachmentInfo = null!;
+        private string? _attachmentFilePath = null;
 
         // Statistics Controls
         private Label lblTotalSuccess = null!;
@@ -721,6 +725,48 @@ namespace SMTP_Service.UI
 
             y += 40;
 
+            // Attachment Section
+            var lblAttachment = new Label 
+            { 
+                Text = "Attachment (optional):", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(120, 20) 
+            };
+            tab.Controls.Add(lblAttachment);
+
+            btnBrowseAttachment = new Button
+            {
+                Text = "Browse...",
+                Location = new System.Drawing.Point(150, y - 2),
+                Size = new System.Drawing.Size(100, 24)
+            };
+            btnBrowseAttachment.Click += BtnBrowseAttachment_Click;
+            tab.Controls.Add(btnBrowseAttachment);
+
+            btnClearAttachment = new Button
+            {
+                Text = "Clear",
+                Location = new System.Drawing.Point(260, y - 2),
+                Size = new System.Drawing.Size(70, 24),
+                Enabled = false
+            };
+            btnClearAttachment.Click += BtnClearAttachment_Click;
+            tab.Controls.Add(btnClearAttachment);
+
+            y += 30;
+
+            lblAttachmentInfo = new Label
+            {
+                Text = "No file selected",
+                Location = new System.Drawing.Point(150, y),
+                Size = new System.Drawing.Size(380, 40),
+                AutoSize = false,
+                ForeColor = System.Drawing.Color.Gray
+            };
+            tab.Controls.Add(lblAttachmentInfo);
+
+            y += 50;
+
             // Send Test Button
             btnSendTest = new Button
             {
@@ -737,9 +783,10 @@ namespace SMTP_Service.UI
             var lblNote = new Label
             {
                 Text = "Note: This sends directly via MS Graph API, bypassing the SMTP server.\n" +
-                       "Make sure your MS Graph settings are configured and saved first.",
+                       "Make sure your MS Graph settings are configured and saved first.\n" +
+                       "You can attach any file up to 100 MB in size.",
                 Location = new System.Drawing.Point(20, y),
-                Size = new System.Drawing.Size(520, 40),
+                Size = new System.Drawing.Size(520, 60),
                 AutoSize = false,
                 ForeColor = System.Drawing.Color.Gray
             };
@@ -763,6 +810,7 @@ namespace SMTP_Service.UI
             y += 35;
 
             // Global Stats Section
+#pragma warning disable CS8602
             var lblGlobalHeader = new Label
             {
                 Text = "Global Statistics",
@@ -770,6 +818,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(200, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Bold)
             };
+#pragma warning restore CS8602
             tab.Controls.Add(lblGlobalHeader);
 
             y += 30;
@@ -781,6 +830,7 @@ namespace SMTP_Service.UI
                 BorderStyle = BorderStyle.FixedSingle
             };
 
+#pragma warning disable CS8602
             lblTotalSuccess = new Label
             {
                 Text = "Total Successful: 0",
@@ -788,8 +838,10 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
+#pragma warning restore CS8602
             panelGlobal.Controls.Add(lblTotalSuccess);
 
+#pragma warning disable CS8602
             lblTotalFailed = new Label
             {
                 Text = "Total Failed: 0",
@@ -797,8 +849,10 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
+#pragma warning restore CS8602
             panelGlobal.Controls.Add(lblTotalFailed);
 
+#pragma warning disable CS8602
             lblLastSuccess = new Label
             {
                 Text = "Last Success: Never",
@@ -806,8 +860,10 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
+#pragma warning restore CS8602
             panelGlobal.Controls.Add(lblLastSuccess);
 
+#pragma warning disable CS8602
             lblLastFailure = new Label
             {
                 Text = "Last Failure: Never",
@@ -815,8 +871,10 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
+#pragma warning restore CS8602
             panelGlobal.Controls.Add(lblLastFailure);
 
+#pragma warning disable CS8602
             lblQueueCount = new Label
             {
                 Text = "Messages in Queue: 0",
@@ -824,6 +882,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
+#pragma warning restore CS8602
             panelGlobal.Controls.Add(lblQueueCount);
 
             tab.Controls.Add(panelGlobal);
@@ -1897,6 +1956,64 @@ namespace SMTP_Service.UI
             }
         }
 
+        private void BtnBrowseAttachment_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                using var openFileDialog = new OpenFileDialog
+                {
+                    Title = "Select File to Attach",
+                    Filter = "All Files (*.*)|*.*",
+                    Multiselect = false,
+                    CheckFileExists = true
+                };
+
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    var fileInfo = new FileInfo(openFileDialog.FileName);
+                    
+                    // Check file size (100MB limit)
+                    const long maxSizeBytes = 100L * 1024 * 1024; // 100 MB
+                    if (fileInfo.Length > maxSizeBytes)
+                    {
+                        MessageBox.Show(
+                            $"File is too large!\n\n" +
+                            $"Selected file: {fileInfo.Length / 1024.0 / 1024.0:N2} MB\n" +
+                            $"Maximum allowed: 100 MB\n\n" +
+                            $"Please select a smaller file.",
+                            "File Too Large",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    _attachmentFilePath = openFileDialog.FileName;
+                    
+                    // Update UI
+                    lblAttachmentInfo.Text = $"File: {fileInfo.Name}\n" +
+                                            $"Size: {fileInfo.Length / 1024.0:N2} KB" +
+                                            (fileInfo.Length > 1024 * 1024 ? $" ({fileInfo.Length / 1024.0 / 1024.0:N2} MB)" : "");
+                    lblAttachmentInfo.ForeColor = System.Drawing.Color.DarkGreen;
+                    btnClearAttachment.Enabled = true;
+
+                    Serilog.Log.Information($"Attachment selected: {fileInfo.Name} ({fileInfo.Length} bytes)");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error selecting file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void BtnClearAttachment_Click(object? sender, EventArgs e)
+        {
+            _attachmentFilePath = null;
+            lblAttachmentInfo.Text = "No file selected";
+            lblAttachmentInfo.ForeColor = System.Drawing.Color.Gray;
+            btnClearAttachment.Enabled = false;
+            Serilog.Log.Information("Test email attachment cleared");
+        }
+
         private async void BtnSendTest_Click(object? sender, EventArgs e)
         {
             btnSendTest.Enabled = false;
@@ -1931,6 +2048,43 @@ namespace SMTP_Service.UI
                     ReceivedAt = DateTime.Now
                 };
 
+                // Add attachment if one is selected
+                if (!string.IsNullOrEmpty(_attachmentFilePath) && File.Exists(_attachmentFilePath))
+                {
+                    try
+                    {
+                        Serilog.Log.Information($"Adding attachment: {_attachmentFilePath}");
+                        
+                        var fileInfo = new FileInfo(_attachmentFilePath);
+                        var fileBytes = await File.ReadAllBytesAsync(_attachmentFilePath);
+                        
+                        // Determine content type
+                        var contentType = GetContentType(fileInfo.Extension);
+                        
+                        var attachment = new EmailAttachment
+                        {
+                            FileName = fileInfo.Name,
+                            ContentType = contentType,
+                            Content = fileBytes,
+                            Size = fileBytes.Length,
+                            IsInline = false
+                        };
+                        
+                        testEmail.Attachments.Add(attachment);
+                        Serilog.Log.Information($"Attachment added: {fileInfo.Name} ({fileBytes.Length} bytes, {contentType})");
+                    }
+                    catch (Exception attachEx)
+                    {
+                        Serilog.Log.Error(attachEx, "Error reading attachment file");
+                        MessageBox.Show(
+                            $"Error reading attachment file:\n\n{attachEx.Message}\n\n" +
+                            "The email will be sent without the attachment.",
+                            "Attachment Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                    }
+                }
+
                 // Create logger for GraphEmailService
                 using var loggerFactory = LoggerFactory.Create(builder =>
                 {
@@ -1958,11 +2112,21 @@ namespace SMTP_Service.UI
                 if (success)
                 {
                     Serilog.Log.Information($"Test email sent successfully to {txtTestTo.Text}");
-                    MessageBox.Show(
-                        $"Test email sent successfully!\n\n" +
+                    
+                    var successMessage = $"Test email sent successfully!\n\n" +
                         $"To: {txtTestTo.Text}\n" +
-                        $"Subject: {testEmail.Subject}\n\n" +
-                        $"Check the recipient's inbox to verify delivery.",
+                        $"Subject: {testEmail.Subject}\n";
+                    
+                    if (testEmail.Attachments.Count > 0)
+                    {
+                        var attachment = testEmail.Attachments[0];
+                        successMessage += $"Attachment: {attachment.FileName} ({attachment.Size / 1024.0:N2} KB)\n";
+                    }
+                    
+                    successMessage += "\nCheck the recipient's inbox to verify delivery.";
+                    
+                    MessageBox.Show(
+                        successMessage,
                         "Success",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
@@ -2065,6 +2229,74 @@ namespace SMTP_Service.UI
             {
                 MessageBox.Show($"Error opening logs folder: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private string GetContentType(string extension)
+        {
+            // Remove leading dot if present
+            extension = extension.TrimStart('.').ToLower();
+
+            return extension switch
+            {
+                // Documents
+                "pdf" => "application/pdf",
+                "doc" => "application/msword",
+                "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "xls" => "application/vnd.ms-excel",
+                "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "ppt" => "application/vnd.ms-powerpoint",
+                "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "txt" => "text/plain",
+                "csv" => "text/csv",
+                "rtf" => "application/rtf",
+
+                // Images
+                "jpg" or "jpeg" => "image/jpeg",
+                "png" => "image/png",
+                "gif" => "image/gif",
+                "bmp" => "image/bmp",
+                "svg" => "image/svg+xml",
+                "ico" => "image/x-icon",
+                "tiff" or "tif" => "image/tiff",
+                "webp" => "image/webp",
+
+                // Archives
+                "zip" => "application/zip",
+                "rar" => "application/x-rar-compressed",
+                "7z" => "application/x-7z-compressed",
+                "tar" => "application/x-tar",
+                "gz" => "application/gzip",
+
+                // Audio
+                "mp3" => "audio/mpeg",
+                "wav" => "audio/wav",
+                "ogg" => "audio/ogg",
+                "m4a" => "audio/mp4",
+                "flac" => "audio/flac",
+
+                // Video
+                "mp4" => "video/mp4",
+                "avi" => "video/x-msvideo",
+                "mov" => "video/quicktime",
+                "wmv" => "video/x-ms-wmv",
+                "flv" => "video/x-flv",
+                "mkv" => "video/x-matroska",
+
+                // Code/Web
+                "html" or "htm" => "text/html",
+                "css" => "text/css",
+                "js" => "application/javascript",
+                "json" => "application/json",
+                "xml" => "application/xml",
+
+                // Executables
+                "exe" => "application/x-msdownload",
+                "dll" => "application/x-msdownload",
+                "msi" => "application/x-msi",
+
+                // Default
+                _ => "application/octet-stream"
+            };
         }
     }
 }

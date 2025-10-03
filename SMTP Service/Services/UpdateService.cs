@@ -279,8 +279,8 @@ namespace SMTP_Service.Services
             if (string.IsNullOrEmpty(tagName))
                 return new Version(0, 0, 0);
             
-            // Remove 'v' prefix if present (v1.4.2 -> 1.4.2)
-            var versionString = tagName.TrimStart('v', 'V');
+            // Remove 'v' or 'V' prefix and any following dots (v1.4.2 or v.1.4.2 -> 1.4.2)
+            var versionString = tagName.TrimStart('v', 'V').TrimStart('.');
             
             if (Version.TryParse(versionString, out var version))
                 return version;
