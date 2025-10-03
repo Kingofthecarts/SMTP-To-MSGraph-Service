@@ -12,7 +12,6 @@ namespace SMTP_Service.UI
         private ContextMenuStrip _contextMenu = null!;
         private const string ServiceName = "SMTP to Graph Relay";
         private ToolStripMenuItem? _consoleMenuItem;
-        private bool _consoleVisible = true; // Track console visibility state
         private bool _uiOnlyMode = false; // True if this is just a UI instance (service already running)
         
         // Windows API for console window manipulation
@@ -140,7 +139,6 @@ namespace SMTP_Service.UI
             {
                 // Actually free the console (releases memory)
                 FreeConsole();
-                _consoleVisible = false;
                 
                 Log.Information("Console window closed by user - freed console memory");
                 

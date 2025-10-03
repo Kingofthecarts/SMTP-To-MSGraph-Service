@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using System.Diagnostics;
 using SMTP_Service.Models;
 using SMTP_Service.Helpers;
 using Serilog;
@@ -54,9 +55,23 @@ namespace SMTP_Service.UI
         private Label lblLastSuccess = null!;
         private Label lblLastFailure = null!;
         private Label lblQueueCount = null!;
+        private Label lblMemoryUsage = null!;
+        private Label lblCpuUsage = null!;
+        private Label lblUptime = null!;
         private DataGridView dgvUserStats = null!;
         private Button btnRefreshStats = null!;
         private Button btnResetStats = null!;
+        private System.Windows.Forms.Timer? _cpuRefreshTimer = null!;
+        private System.Windows.Forms.Timer? _memoryRefreshTimer = null!;
+        private System.Windows.Forms.Timer? _statsRefreshTimer = null!;
+        private System.Windows.Forms.Timer? _statsLoggingTimer = null!;
+        
+        // Track min/max for CPU and Memory
+        private double _minCpuUsage = double.MaxValue;
+        private double _maxCpuUsage = double.MinValue;
+        private double _minMemoryMB = double.MaxValue;
+        private double _maxMemoryMB = double.MinValue;
+        private ToolTip _statsToolTip = null!;
 
         // Buttons
         private Button btnSave = null!;
@@ -76,8 +91,54 @@ namespace SMTP_Service.UI
             _configManager = new Managers.ConfigurationManager();
             _config = _configManager.LoadConfiguration();
             
+            // Initialize tooltip for stats
+            _statsToolTip = new ToolTip
+            {
+                AutoPopDelay = 5000,
+                InitialDelay = 500,
+                ReshowDelay = 100
+            };
+            
             InitializeComponents();
             LoadConfiguration();
+            
+            // Handle form closing to cleanup timer
+            this.FormClosing += ConfigurationForm_FormClosing;
+        }
+
+        private void ConfigurationForm_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            // Stop and dispose all timers
+            if (_cpuRefreshTimer != null)
+            {
+                _cpuRefreshTimer.Stop();
+                _cpuRefreshTimer.Dispose();
+                _cpuRefreshTimer = null;
+            }
+            
+            if (_memoryRefreshTimer != null)
+            {
+                _memoryRefreshTimer.Stop();
+                _memoryRefreshTimer.Dispose();
+                _memoryRefreshTimer = null;
+            }
+            
+            if (_statsRefreshTimer != null)
+            {
+                _statsRefreshTimer.Stop();
+                _statsRefreshTimer.Dispose();
+                _statsRefreshTimer = null;
+            }
+            
+            if (_statsLoggingTimer != null)
+            {
+                _statsLoggingTimer.Stop();
+                _statsLoggingTimer.Dispose();
+                _statsLoggingTimer = null;
+            }
+            
+            // Dispose tooltip
+            _statsToolTip?.Dispose();
         }
 
         // Helper method to mask GUID after third dash
@@ -121,7 +182,7 @@ namespace SMTP_Service.UI
         private void InitializeComponents()
         {
             this.Text = $"SMTP to Graph Relay - Configuration v{VersionHelper.GetVersion()}";
-            this.Size = new System.Drawing.Size(600, 700);
+            this.Size = new System.Drawing.Size(620, 780);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -826,7 +887,7 @@ namespace SMTP_Service.UI
             var panelGlobal = new Panel
             {
                 Location = new System.Drawing.Point(20, y),
-                Size = new System.Drawing.Size(540, 120),
+                Size = new System.Drawing.Size(540, 180),
                 BorderStyle = BorderStyle.FixedSingle
             };
 
@@ -885,9 +946,44 @@ namespace SMTP_Service.UI
 #pragma warning restore CS8602
             panelGlobal.Controls.Add(lblQueueCount);
 
+            // System Stats - Row 4
+#pragma warning disable CS8602
+            lblMemoryUsage = new Label
+            {
+                Text = "Active Memory: 0 MB",
+                Location = new System.Drawing.Point(10, 100),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
+            };
+#pragma warning restore CS8602
+            panelGlobal.Controls.Add(lblMemoryUsage);
+
+#pragma warning disable CS8602
+            lblCpuUsage = new Label
+            {
+                Text = "CPU Usage: 0%",
+                Location = new System.Drawing.Point(270, 100),
+                Size = new System.Drawing.Size(250, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
+            };
+#pragma warning restore CS8602
+            panelGlobal.Controls.Add(lblCpuUsage);
+
+            // System Stats - Row 5
+#pragma warning disable CS8602
+            lblUptime = new Label
+            {
+                Text = "Uptime: Not available",
+                Location = new System.Drawing.Point(10, 130),
+                Size = new System.Drawing.Size(520, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
+            };
+#pragma warning restore CS8602
+            panelGlobal.Controls.Add(lblUptime);
+
             tab.Controls.Add(panelGlobal);
 
-            y += 130;
+            y += 190;
 
             // User Stats Section
             var lblUserHeader = new Label
@@ -951,11 +1047,53 @@ namespace SMTP_Service.UI
             btnResetStats.Click += BtnResetStats_Click;
             tab.Controls.Add(btnResetStats);
 
+            // Setup separate auto-refresh timers with different intervals
+            
+            // CPU updates every 1 second (more responsive)
+            _cpuRefreshTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 1000 // 1 second
+            };
+            _cpuRefreshTimer.Tick += (s, e) => UpdateCpuStats();
+            _cpuRefreshTimer.Start();
+            
+            // Memory and uptime update every 5 seconds
+            _memoryRefreshTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 5000 // 5 seconds
+            };
+            _memoryRefreshTimer.Tick += (s, e) => UpdateMemoryAndUptimeStats();
+            _memoryRefreshTimer.Start();
+            
+            // Email statistics update every 10 seconds (to catch new events)
+            _statsRefreshTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 10000 // 10 seconds
+            };
+            _statsRefreshTimer.Tick += (s, e) => LoadEmailStatistics();
+            _statsRefreshTimer.Start();
+            
+            // Log CPU and Memory stats every 10 minutes
+            _statsLoggingTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 600000 // 10 minutes (600,000 ms)
+            };
+            _statsLoggingTimer.Tick += (s, e) => LogSystemStats();
+            _statsLoggingTimer.Start();
+
             // Load initial stats
             LoadStatistics();
         }
 
         private void LoadStatistics()
+        {
+            // Load all statistics at once (initial load)
+            LoadEmailStatistics();
+            UpdateMemoryAndUptimeStats();
+            UpdateCpuStats();
+        }
+
+        private void LoadEmailStatistics()
         {
             try
             {
@@ -1009,6 +1147,7 @@ namespace SMTP_Service.UI
                     }
                 }
 
+
                 // Update user stats grid
                 dgvUserStats.Rows.Clear();
                 foreach (var userStat in stats.UserStats.Values.OrderBy(u => u.Username))
@@ -1034,6 +1173,185 @@ namespace SMTP_Service.UI
             catch (Exception ex)
             {
                 MessageBox.Show($"Error loading statistics: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void UpdateMemoryAndUptimeStats()
+        {
+            try
+            {
+                // Get current process
+                var currentProcess = Process.GetCurrentProcess();
+
+                // Active Memory Usage (WorkingSet64 = physical RAM actively in use)
+                var memoryMB = currentProcess.WorkingSet64 / 1024.0 / 1024.0;
+                if (lblMemoryUsage != null)
+                {
+                    // Track min/max
+                    if (memoryMB < _minMemoryMB) _minMemoryMB = memoryMB;
+                    if (memoryMB > _maxMemoryMB) _maxMemoryMB = memoryMB;
+                    
+                    lblMemoryUsage.Text = $"Active Memory: {memoryMB:N2} MB";
+                    
+                    // Update tooltip with min/max
+                    _statsToolTip.SetToolTip(lblMemoryUsage, 
+                        $"Current: {memoryMB:N2} MB\n" +
+                        $"Min: {_minMemoryMB:N2} MB\n" +
+                        $"Max: {_maxMemoryMB:N2} MB");
+                    
+                    // Color code based on usage
+                    if (memoryMB > 500)
+                        lblMemoryUsage.ForeColor = System.Drawing.Color.DarkRed;
+                    else if (memoryMB > 200)
+                        lblMemoryUsage.ForeColor = System.Drawing.Color.DarkOrange;
+                    else
+                        lblMemoryUsage.ForeColor = System.Drawing.Color.DarkGreen;
+                }
+
+                // Uptime
+                if (lblUptime != null)
+                {
+                    var uptime = DateTime.Now - currentProcess.StartTime;
+                    
+                    string uptimeText;
+                    if (uptime.TotalDays >= 1)
+                        uptimeText = $"{(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m";
+                    else if (uptime.TotalHours >= 1)
+                        uptimeText = $"{uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s";
+                    else if (uptime.TotalMinutes >= 1)
+                        uptimeText = $"{uptime.Minutes}m {uptime.Seconds}s";
+                    else
+                        uptimeText = $"{uptime.Seconds}s";
+                    
+                    lblUptime.Text = $"Uptime: {uptimeText}";
+                    lblUptime.ForeColor = System.Drawing.Color.DarkBlue;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error updating memory and uptime statistics");
+                
+                if (lblMemoryUsage != null)
+                    lblMemoryUsage.Text = "Active Memory: Error";
+                if (lblUptime != null)
+                    lblUptime.Text = "Uptime: Error";
+            }
+        }
+
+        private void UpdateCpuStats()
+        {
+            try
+            {
+                // CPU Usage for this specific application process
+                if (lblCpuUsage != null)
+                {
+                    try
+                    {
+                        var currentProcess = Process.GetCurrentProcess();
+                        var processName = currentProcess.ProcessName;
+                        
+                        // Create performance counter for this specific process
+                        var cpuCounter = new PerformanceCounter("Process", "% Processor Time", processName);
+                        cpuCounter.NextValue(); // First call returns 0
+                        System.Threading.Thread.Sleep(100); // Wait a bit
+                        var cpuUsage = cpuCounter.NextValue();
+                        
+                        // Normalize to percentage (can be > 100% on multi-core systems)
+                        var normalizedCpuUsage = cpuUsage / Environment.ProcessorCount;
+                        
+                        // Track min/max
+                        if (normalizedCpuUsage < _minCpuUsage) _minCpuUsage = normalizedCpuUsage;
+                        if (normalizedCpuUsage > _maxCpuUsage) _maxCpuUsage = normalizedCpuUsage;
+                        
+                        lblCpuUsage.Text = $"CPU Usage: {normalizedCpuUsage:N1}%";
+                        
+                        // Update tooltip with min/max
+                        _statsToolTip.SetToolTip(lblCpuUsage,
+                            $"Current: {normalizedCpuUsage:N1}%\n" +
+                            $"Min: {_minCpuUsage:N1}%\n" +
+                            $"Max: {_maxCpuUsage:N1}%");
+                        
+                        // Color code based on usage
+                        if (normalizedCpuUsage > 80)
+                            lblCpuUsage.ForeColor = System.Drawing.Color.DarkRed;
+                        else if (normalizedCpuUsage > 50)
+                            lblCpuUsage.ForeColor = System.Drawing.Color.DarkOrange;
+                        else
+                            lblCpuUsage.ForeColor = System.Drawing.Color.DarkGreen;
+                            
+                        cpuCounter.Dispose();
+                    }
+                    catch
+                    {
+                        lblCpuUsage.Text = "CPU Usage: N/A";
+                        lblCpuUsage.ForeColor = System.Drawing.Color.Gray;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error updating CPU statistics");
+                
+                if (lblCpuUsage != null)
+                    lblCpuUsage.Text = "CPU Usage: Error";
+            }
+        }
+
+        private void UpdateSystemStats()
+        {
+            // Legacy method - now calls the split methods
+            UpdateMemoryAndUptimeStats();
+            UpdateCpuStats();
+        }
+
+        private void LogSystemStats()
+        {
+            try
+            {
+                var currentProcess = Process.GetCurrentProcess();
+                var uptime = DateTime.Now - currentProcess.StartTime;
+                var currentMemoryMB = currentProcess.WorkingSet64 / 1024.0 / 1024.0;
+                
+                // Get current CPU (need to sample it)
+                double currentCpuUsage = 0;
+                try
+                {
+                    var processName = currentProcess.ProcessName;
+                    var cpuCounter = new PerformanceCounter("Process", "% Processor Time", processName);
+                    cpuCounter.NextValue();
+                    System.Threading.Thread.Sleep(100);
+                    var cpuValue = cpuCounter.NextValue();
+                    currentCpuUsage = cpuValue / Environment.ProcessorCount;
+                    cpuCounter.Dispose();
+                }
+                catch
+                {
+                    // If we can't get CPU, just use 0
+                }
+                
+                string uptimeText;
+                if (uptime.TotalDays >= 1)
+                    uptimeText = $"{(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m";
+                else if (uptime.TotalHours >= 1)
+                    uptimeText = $"{uptime.Hours}h {uptime.Minutes}m";
+                else
+                    uptimeText = $"{uptime.Minutes}m";
+                
+                Log.Information(
+                    "System Stats - CPU: {CurrentCpu:N1}% (Min: {MinCpu:N1}%, Max: {MaxCpu:N1}%) | " +
+                    "Memory: {CurrentMemory:N2} MB (Min: {MinMemory:N2} MB, Max: {MaxMemory:N2} MB) | " +
+                    "Uptime: {Uptime}",
+                    currentCpuUsage,
+                    _minCpuUsage == double.MaxValue ? 0 : _minCpuUsage,
+                    _maxCpuUsage == double.MinValue ? 0 : _maxCpuUsage,
+                    currentMemoryMB,
+                    _minMemoryMB == double.MaxValue ? 0 : _minMemoryMB,
+                    _maxMemoryMB == double.MinValue ? 0 : _maxMemoryMB,
+                    uptimeText);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error logging system statistics");
             }
         }
 

@@ -1,5 +1,35 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 3.4.0 - October 3, 2025
+
+### ✨ New Features
+
+**Enhanced Statistics Monitoring**
+- **Real-time System Metrics**: The Statistics tab now displays live CPU usage, active memory consumption, and application uptime
+  - CPU usage updates every second for responsive monitoring
+  - Memory usage and uptime refresh every 5 seconds
+  - Email statistics automatically refresh every 10 seconds to catch new events
+- **Min/Max Tracking**: Hover your mouse over CPU or Memory values to see minimum and maximum values since the app started
+  - Provides quick insight into performance trends without cluttering the interface
+  - Values reset when you close the Configuration window
+- **Automatic Performance Logging**: System statistics are automatically written to the log file every 10 minutes
+  - Includes current, minimum, and maximum CPU and memory usage
+  - Records uptime for troubleshooting and performance analysis
+  - Example log entry: `System Stats - CPU: 2.5% (Min: 1.2%, Max: 5.8%) | Memory: 45.32 MB (Min: 42.15 MB, Max: 48.67 MB) | Uptime: 2h 35m`
+
+### 🔧 Improvements
+- **Application-Specific Metrics**: CPU usage now shows the SMTP Service's CPU consumption, not system-wide usage
+- **Larger Configuration Window**: Increased window size to 620x780 pixels to better display all statistics without content being cut off
+- **Color-Coded Performance Indicators**: 
+  - CPU and memory values change color based on usage (green = good, orange = moderate, red = high)
+  - Helps quickly identify potential performance issues
+
+### 📦 Technical
+- Added System.Diagnostics.PerformanceCounter package for accurate performance monitoring
+- Implemented separate timers for optimal refresh intervals based on metric volatility
+
+---
+
 ## VERSION 3.3.0 - October 3, 2025
 
 **Update Script Detection Improvements**
