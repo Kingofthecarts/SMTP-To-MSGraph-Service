@@ -1,5 +1,22 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 2.0.1 - October 2, 2025
+
+**Update System Improvements**
+
+Enhanced the update notification interface and added orphaned file cleanup to the installer.
+
+**Key Changes:**
+- Simplified update notification dialog by removing release notes section
+- Changed "Install Later" button to "Cancel" for clarity
+- Added orphaned file detection: automatically removes files that exist in current installation but not in the update package
+- Orphaned files are backed up before removal for safety
+- Update installer now shows count of files to be removed during confirmation
+
+**Impact:** Cleaner update experience and prevents accumulation of obsolete files from previous versions.
+
+---
+
 ## VERSION 2.0.0 - October 2, 2025
 
 **🚀 MAJOR UPDATE: Automated Update System**

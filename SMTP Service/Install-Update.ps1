@@ -283,11 +283,47 @@ foreach ($UpdateFile in $UpdateFiles) {
     }
 }
 
+# Detect orphaned files (files in current installation but NOT in update)
+Write-Log "Detecting orphaned files (removed in new version)..."
+$OrphanedFiles = @()
+
+# Get all files currently in root
+$CurrentFiles = Get-ChildItem -Path $RootPath -Recurse -File
+foreach ($currentFile in $CurrentFiles) {
+    $relativePath = $currentFile.FullName.Substring($RootPath.Length + 1)
+    
+    # Skip if excluded
+    if (Should-Exclude -RelativePath $relativePath) {
+        continue
+    }
+    
+    # Skip if it's a backup folder
+    if ($relativePath -like "backup_*\*" -or $relativePath -like "backup_*") {
+        continue
+    }
+    
+    # Skip the log file we're currently writing to
+    if ($currentFile.FullName -eq $script:LogFile) {
+        continue
+    }
+    
+    # Check if this file exists in the update
+    $updateFilePath = Join-Path $ExtractPath $relativePath
+    if (-not (Test-Path $updateFilePath)) {
+        Write-Log "ORPHANED: $relativePath (not in update - will be removed)"
+        $OrphanedFiles += [PSCustomObject]@{
+            Path = $relativePath
+            FullPath = $currentFile.FullName
+        }
+    }
+}
+
 Write-Log ""
 Write-Log "Files to replace: $($FilesToReplace.Count)"
 Write-Log "New files to add: $($NewFiles.Count)"
 Write-Log "Identical files:  $($IdenticalFiles.Count)"
 Write-Log "Skipped files:    $($SkippedFiles.Count)"
+Write-Log "Orphaned files:   $($OrphanedFiles.Count)"
 Write-Log ""
 Write-Log "=========================================="
 Write-Log ""
@@ -301,6 +337,9 @@ Write-Host ""
 Write-Host "Version to install: $Version" -ForegroundColor Cyan
 Write-Host "Files to replace:   $($FilesToReplace.Count)" -ForegroundColor Cyan
 Write-Host "New files to add:   $($NewFiles.Count)" -ForegroundColor Cyan
+if ($OrphanedFiles.Count -gt 0) {
+    Write-Host "Files to remove:    $($OrphanedFiles.Count)" -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "A backup will be created before updating." -ForegroundColor Gray
 Write-Host ""
@@ -400,6 +439,32 @@ foreach ($file in $NewFiles) {
     }
 }
 
+# Remove orphaned files (backup first)
+if ($OrphanedFiles.Count -gt 0) {
+    Write-Log ""
+    Write-Log "Removing orphaned files..."
+    foreach ($file in $OrphanedFiles) {
+        try {
+            # Backup the file first
+            $backupPath = Join-Path $BackupFolder $file.Path
+            $backupDir = Split-Path -Parent $backupPath
+            if (-not (Test-Path $backupDir)) {
+                New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
+            }
+            Copy-Item -Path $file.FullPath -Destination $backupPath -Force
+            
+            # Now delete the file
+            Remove-Item -Path $file.FullPath -Force
+            Write-Log "[OK] Removed: $($file.Path) (backed up)"
+        }
+        catch {
+            Write-Log "[ERROR] Failed to remove: $($file.Path)"
+            Write-Log "  Error: $($_.Exception.Message)"
+            $updateSuccess = $false
+        }
+    }
+}
+
 Write-Log ""
 
 # Step 6: Post-update actions (if any)
@@ -449,6 +514,11 @@ if ($updateSuccess) {
     Write-Log "=========================================="
     Write-Log ""
     Write-Log "Version: $Version"
+    Write-Log "Files replaced: $($FilesToReplace.Count)"
+    Write-Log "Files added: $($NewFiles.Count)"
+    if ($OrphanedFiles.Count -gt 0) {
+        Write-Log "Files removed: $($OrphanedFiles.Count)"
+    }
     Write-Log "Backup location: $BackupFolder"
     Write-Log ""
     

@@ -443,17 +443,8 @@ namespace SMTP_Service.UI
                     var message = $"A new version is available!\n\n" +
                                  $"Current Version: {result.CurrentVersion}\n" +
                                  $"Latest Version: {result.LatestVersion}\n" +
-                                 $"File: {result.FileName} ({result.FileSize / 1024 / 1024:N1} MB)\n\n";
-                    
-                    if (!string.IsNullOrEmpty(result.ReleaseNotes))
-                    {
-                        var notes = result.ReleaseNotes;
-                        if (notes.Length > 200)
-                            notes = notes.Substring(0, 197) + "...";
-                        message += $"Release Notes:\n{notes}\n\n";
-                    }
-                    
-                    message += "Would you like to download the update?";
+                                 $"File: {result.FileName} ({result.FileSize / 1024 / 1024:N1} MB)\n\n" +
+                                 "Would you like to download the update?";
                     
                     if (MessageBox.Show(message, "Update Available",
                         MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)

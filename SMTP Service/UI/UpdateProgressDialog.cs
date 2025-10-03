@@ -147,7 +147,7 @@ namespace SMTP_Service.UI
             // Also show close button if they don't want to install now
             var btnClose = new Button
             {
-                Text = "Install Later",
+                Text = "Cancel",
                 Location = new Point(210, 110),
                 Size = new Size(90, 25)
             };
