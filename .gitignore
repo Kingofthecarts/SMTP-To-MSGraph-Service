@@ -364,3 +364,12 @@ FodyWeavers.xsd
 /SMTP Service/config/smtp-config.json
 /SMTP Service/config
 /SMTP Service/test-smtp-auth.ps1
+/SMTP Service/Setup-GitHubToken.ps1
+/SMTP Service/Test-GitHubConfig.ps1
+/SMTP Service/config/README.md
+/SMTP Service/config/git.json
+/SMTP Service/config/git.json
+/SMTP Service/config/Setup-GitHubToken.ps1
+/SMTP Service/config/Test-GitHubConfig.ps1
+/SMTP Service/docs/GITHUB_UPDATE_SYSTEM.md
+/SMTP Service/docs/VERSION_CONSOLIDATION_COMPLETE.md
