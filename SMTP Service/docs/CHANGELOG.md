@@ -1,5 +1,59 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 3.3.0 - October 3, 2025
+
+**Update Script Detection Improvements**
+
+Enhanced update script self-detection and improved file summary display.
+
+### Changes
+
+- Update script self-update now detected immediately after file analysis
+- Restarts before showing summaries if script needs updating
+- Removed file display limits - all files now shown in summary
+- No more truncation with "... and X more" messages
+
+**Impact:** Faster script updates and complete visibility of all file changes.
+
+---
+
+## VERSION 3.2.3 - October 3, 2025
+
+**Visual Update Improvements**
+
+Added color-coded file analysis for clearer update preview.
+
+### Changes
+
+- Color-coded file listing: Green (new), Yellow (modified), Red (deleted)
+- Enhanced summary display with color grouping
+- Clearer visual feedback before update confirmation
+
+**Impact:** Easier to understand what changes will be made before confirming update.
+
+---
+
+## VERSION 3.2.2 - October 3, 2025
+
+**Update Script Immediate Self-Update with Major Version Enforcement**
+
+Update script now immediately updates itself when detected, with mandatory updates for major version changes.
+
+### Changes
+
+- Update script detects when it needs updating during file replacement phase
+- **Major version updates (x.0.0) force script update** - no option to decline
+- Minor/patch updates (x.y.z) still prompt for user confirmation
+- Creates temporary bridge script to handle the swap
+- Bridge script deletes old version, renames new version, and relaunches
+- Update process restarts from the beginning with new script
+- All parameters preserved during restart
+- Bridge script self-deletes after launching new update
+
+**Impact:** Immediate self-updating with version-aware enforcement. Major updates require script update to ensure compatibility.
+
+---
+
 ## VERSION 3.2.1 - October 3, 2025
 
 **Update System Improvements**

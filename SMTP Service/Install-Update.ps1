@@ -171,99 +171,29 @@ function Stop-SmtpService {
 $script:LogFile = Get-LogFilePath
 
 # =============================================================================
-# SELF-UPDATE CHECK
-# If a previous update included a new version of this script, it was saved as
-# Install-Update-NEW.ps1 because we couldn't replace ourselves while running.
-# Now we detect it, swap it in, and RESTART THE ENTIRE UPDATE PROCESS from
-# the beginning with the new script version.
+# LEGACY SELF-UPDATE CHECK (for older versions)
+# This handles Install-Update-NEW.ps1 files left by older update scripts.
+# New versions use immediate bridge script approach.
 # =============================================================================
 
-# Check if there's a new update script to swap in
+# Check if there's a legacy new update script to swap in
 $NewUpdateScript = Join-Path $RootPath "Install-Update-NEW.ps1"
 if (Test-Path $NewUpdateScript) {
     Write-Log "=========================================="
-    Write-Log "    UPDATE SCRIPT SELF-UPDATE DETECTED"
+    Write-Log "    LEGACY UPDATE SCRIPT DETECTED"
     Write-Log "=========================================="
     Write-Log ""
-    Write-Log "Found new update script: Install-Update-NEW.ps1"
-    Write-Log "The update script itself needs to be updated."
-    Write-Log "Will swap in the new version and restart the update from the beginning."
+    Write-Log "Found Install-Update-NEW.ps1 from previous update"
+    Write-Log "Cleaning up legacy file..."
     
-    # Check if the new script is different from the current one
-    $currentScript = Join-Path $RootPath "Install-Update.ps1"
-    $currentHash = (Get-FileHash -Path $currentScript -Algorithm SHA256).Hash
-    $newHash = (Get-FileHash -Path $NewUpdateScript -Algorithm SHA256).Hash
-    
-    if ($currentHash -eq $newHash) {
-        Write-Log "[WARNING] New script is identical to current script"
-        Write-Log "Removing duplicate Install-Update-NEW.ps1 and continuing..."
+    try {
         Remove-Item $NewUpdateScript -Force
-        Write-Log ""
+        Write-Log "[OK] Legacy update script removed"
     }
-    else {
-        Write-Log "Swapping in new version and restarting entire update process..."
-        
-        try {
-            # Backup current script
-            $BackupScript = Join-Path $RootPath "Install-Update-OLD.ps1"
-            if (Test-Path $BackupScript) {
-                Remove-Item $BackupScript -Force
-            }
-            Copy-Item (Join-Path $RootPath "Install-Update.ps1") -Destination $BackupScript -Force
-            Write-Log "[OK] Current script backed up to Install-Update-OLD.ps1"
-            
-            # Replace with new version
-            Copy-Item $NewUpdateScript -Destination (Join-Path $RootPath "Install-Update.ps1") -Force
-            Write-Log "[OK] New update script installed"
-            
-            # Remove the NEW file
-            Remove-Item $NewUpdateScript -Force
-            Write-Log "[OK] Temporary NEW script removed"
-            
-            # Prepare arguments for relaunch
-            $arguments = @()
-            if (-not [string]::IsNullOrEmpty($Version)) {
-                $arguments += "-Version"
-                $arguments += $Version
-            }
-            if ($NoRestart) {
-                $arguments += "-NoRestart"
-            }
-            
-            Write-Log ""
-            Write-Log "RESTARTING UPDATE PROCESS FROM THE BEGINNING WITH NEW SCRIPT..."
-            Write-Log "Arguments: $($arguments -join ' ')"
-            Write-Log "=========================================="
-            Write-Log ""
-            
-            Write-Host "" -ForegroundColor Yellow
-            Write-Host "===== AUTOMATICALLY RESTARTING UPDATE WITH NEW SCRIPT =====" -ForegroundColor Yellow
-            Write-Host "Please wait, the update will continue automatically..." -ForegroundColor Yellow  
-            Write-Host "" -ForegroundColor Yellow
-            
-            # Give a moment for file operations to complete and user to see message
-            Start-Sleep -Seconds 3
-            
-            # Relaunch the script from the beginning in a new window
-            $scriptPath = Join-Path $RootPath "Install-Update.ps1"
-            if ($arguments.Count -gt 0) {
-                Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"", @arguments
-            } else {
-                Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`""
-            }
-            
-            Write-Host "New update script launched. This window will now close..." -ForegroundColor Green
-            Start-Sleep -Seconds 2
-            
-            # Exit this instance immediately
-            exit 0
-        }
-        catch {
-            Write-Log "[ERROR] Failed to swap update script: $($_.Exception.Message)"
-            Write-Log "Continuing with current version..."
-            Write-Log ""
-        }
+    catch {
+        Write-Log "[WARNING] Could not remove legacy script: $($_.Exception.Message)"
     }
+    Write-Log ""
 }
 
 # Auto-detect version if not specified
@@ -340,6 +270,14 @@ Write-Log "Step 3: Analyzing files..."
 Write-Log "=========================================="
 Write-Log ""
 
+# Display color legend
+Write-Host ""
+Write-Host "File Analysis:" -ForegroundColor White
+Write-Host "  " -NoNewline; Write-Host "GREEN" -ForegroundColor Green -NoNewline; Write-Host " = New files to add"
+Write-Host "  " -NoNewline; Write-Host "YELLOW" -ForegroundColor Yellow -NoNewline; Write-Host " = Files to modify/replace"
+Write-Host "  " -NoNewline; Write-Host "RED" -ForegroundColor Red -NoNewline; Write-Host " = Files to remove (orphaned)"
+Write-Host ""
+
 $FilesToReplace = @()
 $NewFiles = @()
 $SkippedFiles = @()
@@ -366,6 +304,7 @@ foreach ($UpdateFile in $UpdateFiles) {
         $dateMatch = $RootFileInfo.LastWriteTime -eq $UpdateFileInfo.LastWriteTime
         
         if (-not $sizeMatch -or -not $dateMatch) {
+            Write-Host "MODIFY: $RelativePath" -ForegroundColor Yellow
             Write-Log "REPLACE: $RelativePath"
             $FilesToReplace += [PSCustomObject]@{
                 Path = $RelativePath
@@ -376,12 +315,163 @@ foreach ($UpdateFile in $UpdateFiles) {
             $IdenticalFiles += $RelativePath
         }
     } else {
+        Write-Host "NEW: $RelativePath" -ForegroundColor Green
         Write-Log "NEW: $RelativePath"
         $NewFiles += [PSCustomObject]@{
             Path = $RelativePath
             SourcePath = $UpdateFile.FullName
             DestPath = $RootFile
         }
+    }
+}
+
+# Check if Install-Update.ps1 needs updating RIGHT AFTER ANALYSIS
+$updateScriptFile = $FilesToReplace | Where-Object { $_.Path -eq "Install-Update.ps1" }
+if ($updateScriptFile) {
+    Write-Host ""
+    Write-Host "=========================================" -ForegroundColor Yellow
+    Write-Host "    UPDATE SCRIPT NEEDS UPDATING" -ForegroundColor Yellow
+    Write-Host "=========================================" -ForegroundColor Yellow
+    Write-Host "" -ForegroundColor Yellow
+    Write-Log "Install-Update.ps1 detected in update package"
+    
+    # Save the new version
+    $newScriptPath = Join-Path $RootPath "Install-Update-NEW.ps1"
+    Copy-Item -Path $updateScriptFile.SourcePath -Destination $newScriptPath -Force
+    Write-Log "[OK] New update script saved as Install-Update-NEW.ps1"
+    
+    # Check if this is a major version update
+    $isMajorUpdate = $false
+    $forceUpdate = $false
+    
+    if (-not [string]::IsNullOrEmpty($Version)) {
+        $versionParts = $Version -split '\.'
+        if ($versionParts.Count -ge 3 -and $versionParts[1] -eq "0" -and $versionParts[2] -eq "0") {
+            $isMajorUpdate = $true
+            Write-Log "MAJOR VERSION UPDATE DETECTED: $Version"
+        }
+    }
+    
+    if ($isMajorUpdate) {
+        Write-Host "MAJOR VERSION UPDATE: Script update is REQUIRED" -ForegroundColor Red
+        Write-Host "The update script must be updated for version $Version to work correctly." -ForegroundColor Cyan
+        Write-Host "The update process will restart with the new version." -ForegroundColor Cyan
+        Write-Host "" -ForegroundColor Yellow
+        $forceUpdate = $true
+        Write-Log "Major version update - forcing update script update"
+    }
+    else {
+        Write-Host "The update script itself needs to be updated." -ForegroundColor Cyan
+        Write-Host "The update process will restart with the new version." -ForegroundColor Cyan
+        Write-Host "" -ForegroundColor Yellow
+        
+        $confirmation = Read-Host "Do you want to proceed? (Y/N)"
+        
+        if ($confirmation -notmatch '^[Yy]') {
+            Write-Log "User declined update script update"
+            Write-Host "Cannot continue - update script must be updated for this version." -ForegroundColor Red
+            Write-Host "Please run the update again and accept the script update." -ForegroundColor Yellow
+            
+            # Cleanup extracted folder
+            if (Test-Path $ExtractPath) {
+                Remove-Item -Path $ExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            exit 1
+        }
+        $forceUpdate = $true
+    }
+    
+    if ($forceUpdate) {
+        Write-Log "Creating bridge script for self-update..."
+        
+        # Create the bridge script
+        $bridgeScript = Join-Path $RootPath "Install-Update-Bridge.ps1"
+        $bridgeContent = @'
+# Bridge script for updating Install-Update.ps1
+param(
+    [string]$Version = "",
+    [switch]$NoRestart
+)
+
+$RootPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Write-Host "Bridge script executing..." -ForegroundColor Green
+Write-Host "Waiting for main script to exit..." -ForegroundColor Gray
+Start-Sleep -Seconds 3
+
+# Perform the swap
+try {
+    $mainScript = Join-Path $RootPath "Install-Update.ps1"
+    $newScript = Join-Path $RootPath "Install-Update-NEW.ps1"
+    
+    Write-Host "Removing old update script..." -ForegroundColor Gray
+    if (Test-Path $mainScript) {
+        Remove-Item $mainScript -Force
+    }
+    
+    Write-Host "Renaming new update script..." -ForegroundColor Gray
+    Rename-Item -Path $newScript -NewName "Install-Update.ps1" -Force
+    
+    Write-Host "Update script updated successfully!" -ForegroundColor Green
+    Write-Host "" -ForegroundColor Green
+    Write-Host "Restarting update process with new script..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2
+    
+    # Launch the updated script
+    $scriptPath = Join-Path $RootPath "Install-Update.ps1"
+    $allArgs = @("-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"")
+    
+    if (-not [string]::IsNullOrEmpty($Version)) {
+        $allArgs += "-Version"
+        $allArgs += $Version
+    }
+    if ($NoRestart) {
+        $allArgs += "-NoRestart"
+    }
+    
+    Start-Process powershell.exe -ArgumentList $allArgs
+    
+    # Clean up bridge script (self-delete)
+    Start-Sleep -Seconds 2
+    $bridge = Join-Path $RootPath "Install-Update-Bridge.ps1"
+    if (Test-Path $bridge) {
+        Remove-Item $bridge -Force
+    }
+}
+catch {
+    Write-Host "ERROR: Failed to update script: $_" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Red
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+'@
+        
+        # Write the bridge script
+        Set-Content -Path $bridgeScript -Value $bridgeContent -Force
+        Write-Log "[OK] Bridge script created"
+        
+        # Prepare arguments for bridge
+        $bridgeArgs = @("-ExecutionPolicy", "Bypass", "-File", "`"$bridgeScript`"")
+        if (-not [string]::IsNullOrEmpty($Version)) {
+            $bridgeArgs += "-Version"
+            $bridgeArgs += $Version
+        }
+        if ($NoRestart) {
+            $bridgeArgs += "-NoRestart"
+        }
+        
+        Write-Log "Launching bridge script to perform self-update..."
+        Write-Host "" -ForegroundColor Yellow
+        Write-Host "Launching update bridge..." -ForegroundColor Yellow
+        Write-Host "This window will close and the update will restart automatically." -ForegroundColor Yellow
+        
+        # Launch the bridge script
+        Start-Process powershell.exe -ArgumentList $bridgeArgs
+        
+        # Exit immediately
+        Write-Log "Exiting for self-update..."
+        Start-Sleep -Seconds 1
+        exit 0
     }
 }
 
@@ -414,6 +504,11 @@ foreach ($currentFile in $CurrentFiles) {
         continue
     }
     
+    # Skip Install-Update-Bridge.ps1 if it exists
+    if ($currentFile.Name -eq "Install-Update-Bridge.ps1") {
+        continue
+    }
+    
     # Skip the log file we're currently writing to
     if ($currentFile.FullName -eq $script:LogFile) {
         continue
@@ -422,6 +517,7 @@ foreach ($currentFile in $CurrentFiles) {
     # Check if this file exists in the update
     $updateFilePath = Join-Path $ExtractPath $relativePath
     if (-not (Test-Path $updateFilePath)) {
+        Write-Host "DELETE: $relativePath (not in update - will be removed)" -ForegroundColor Red
         Write-Log "ORPHANED: $relativePath (not in update - will be removed)"
         $OrphanedFiles += [PSCustomObject]@{
             Path = $relativePath
@@ -440,20 +536,95 @@ Write-Log ""
 Write-Log "=========================================="
 Write-Log ""
 
+# Display summary with colors
+Write-Host ""
+Write-Host "========================================="  -ForegroundColor Cyan
+Write-Host "         FILE CHANGES SUMMARY"  -ForegroundColor Cyan
+Write-Host "========================================="  -ForegroundColor Cyan
+Write-Host ""
+
+# Show files to be modified
+if ($FilesToReplace.Count -gt 0) {
+    Write-Host "Files to modify ($($FilesToReplace.Count)):" -ForegroundColor Yellow
+    foreach ($file in $FilesToReplace) {
+        Write-Host "  - $($file.Path)" -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
+
+# Show files to be added
+if ($NewFiles.Count -gt 0) {
+    Write-Host "Files to add ($($NewFiles.Count)):" -ForegroundColor Green
+    foreach ($file in $NewFiles) {
+        Write-Host "  + $($file.Path)" -ForegroundColor Green
+    }
+    Write-Host ""
+}
+
+# Show files to be removed
+if ($OrphanedFiles.Count -gt 0) {
+    Write-Host "Files to remove ($($OrphanedFiles.Count)):" -ForegroundColor Red
+    foreach ($file in $OrphanedFiles) {
+        Write-Host "  x $($file.Path)" -ForegroundColor Red
+    }
+    Write-Host ""
+}
+
+# Show unchanged files
+if ($IdenticalFiles.Count -gt 0) {
+    Write-Host "Unchanged files ($($IdenticalFiles.Count)):" -ForegroundColor DarkGray
+    foreach ($file in $IdenticalFiles) {
+        Write-Host "  = $file" -ForegroundColor DarkGray
+    }
+    Write-Host ""
+}
+
+# Show excluded files
+if ($SkippedFiles.Count -gt 0) {
+    Write-Host "Excluded files ($($SkippedFiles.Count)):" -ForegroundColor DarkGray
+    foreach ($file in $SkippedFiles) {
+        Write-Host "  ! $file" -ForegroundColor DarkGray
+    }
+    Write-Host ""
+}
+
+if ($FilesToReplace.Count -eq 0 -and $NewFiles.Count -eq 0 -and $OrphanedFiles.Count -eq 0) {
+    Write-Host "  No file changes required" -ForegroundColor Green
+    Write-Host ""
+}
+
+Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host ""
+
 # Confirmation prompt
 Write-Host ""
 Write-Host "=========================================="  -ForegroundColor Yellow
-Write-Host "         UPDATE CONFIRMATION"  -ForegroundColor Yellow
+Write-Host "       READY TO INSTALL UPDATE"  -ForegroundColor Yellow
 Write-Host "=========================================="  -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Version to install: $Version" -ForegroundColor Cyan
-Write-Host "Files to replace:   $($FilesToReplace.Count)" -ForegroundColor Cyan
-Write-Host "New files to add:   $($NewFiles.Count)" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Update will perform the following:" -ForegroundColor White
+if ($FilesToReplace.Count -gt 0) {
+    Write-Host "  - Modify $($FilesToReplace.Count) file(s)" -ForegroundColor Yellow
+}
+if ($NewFiles.Count -gt 0) {
+    Write-Host "  - Add $($NewFiles.Count) new file(s)" -ForegroundColor Green
+}
 if ($OrphanedFiles.Count -gt 0) {
-    Write-Host "Files to remove:    $($OrphanedFiles.Count)" -ForegroundColor Yellow
+    Write-Host "  - Remove $($OrphanedFiles.Count) orphaned file(s)" -ForegroundColor Red
+}
+if ($FilesToReplace.Count -eq 0 -and $NewFiles.Count -eq 0 -and $OrphanedFiles.Count -eq 0) {
+    Write-Host "  - No file changes needed" -ForegroundColor Green
+}
+if ($SkippedFiles.Count -gt 0) {
+    Write-Host "  - Skip $($SkippedFiles.Count) excluded file(s)" -ForegroundColor DarkGray
+}
+if ($IdenticalFiles.Count -gt 0) {
+    Write-Host "  - Leave $($IdenticalFiles.Count) unchanged file(s)" -ForegroundColor DarkGray
 }
 Write-Host ""
-Write-Host "A backup will be created before updating." -ForegroundColor Gray
+Write-Host "A full backup will be created in the backup folder." -ForegroundColor Gray
 Write-Host ""
 
 $confirmation = Read-Host "Do you want to proceed with the update? (Y/N)"
@@ -571,14 +742,10 @@ $updateSuccess = $true
 # Replace existing files
 foreach ($file in $FilesToReplace) {
     try {
-        # Special handling for Install-Update.ps1 (can't replace itself while running)
-        # This creates Install-Update-NEW.ps1 which will be swapped in on the NEXT run
+        # Note: Install-Update.ps1 is handled immediately after analysis now
+        # Skip if it somehow got here (shouldn't happen)
         if ($file.Path -eq "Install-Update.ps1") {
-            Write-Log "SPECIAL: Install-Update.ps1 needs updating"
-            $newScriptPath = Join-Path $RootPath "Install-Update-NEW.ps1"
-            Copy-Item -Path $file.SourcePath -Destination $newScriptPath -Force
-            Write-Log "[OK] New update script saved as Install-Update-NEW.ps1"
-            Write-Log "     It will be automatically swapped in on next update run"
+            Write-Log "Skipping Install-Update.ps1 - already handled"
             continue
         }
         
@@ -690,14 +857,6 @@ if ($updateSuccess) {
         Write-Log "Files removed: $($OrphanedFiles.Count)"
     }
     Write-Log "Backup location: $BackupFolder"
-    
-    # Check if this was a restart after self-update
-    $OldScript = Join-Path $RootPath "Install-Update-OLD.ps1"
-    if (Test-Path $OldScript) {
-        Write-Log ""
-        Write-Log "Note: Update script was also updated during this process"
-    }
-    
     Write-Log ""
     
     # Only restart if it was running before AND NoRestart not specified
@@ -798,6 +957,18 @@ if (Test-Path $OldUpdateScript) {
     }
     catch {
         Write-Log "[WARNING] Could not remove Install-Update-OLD.ps1: $($_.Exception.Message)"
+    }
+}
+
+# Clean up any leftover bridge script
+$BridgeScript = Join-Path $RootPath "Install-Update-Bridge.ps1"
+if (Test-Path $BridgeScript) {
+    try {
+        Remove-Item $BridgeScript -Force
+        Write-Log "[OK] Removed leftover bridge script (Install-Update-Bridge.ps1)"
+    }
+    catch {
+        Write-Log "[WARNING] Could not remove Install-Update-Bridge.ps1: $($_.Exception.Message)"
     }
 }
 
