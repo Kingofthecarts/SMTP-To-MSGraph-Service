@@ -160,8 +160,7 @@ namespace SMTP_Service.Managers
                 LogSettings = new LogSettings
                 {
                     LogLevel = "Information",
-                    LogFilePath = Path.Combine(logsDir, "smtp-relay.log"),
-                    RollingInterval = "Day"
+                    LogLocation = "logs"
                 }
             };
         }

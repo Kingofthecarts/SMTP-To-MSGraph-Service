@@ -1,0 +1,3 @@
+# Exclude update system documentation from git
+UPDATE_SYSTEM.md
+UPDATE_QUICK_REFERENCE.md

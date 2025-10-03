@@ -48,7 +48,6 @@ namespace SMTP_Service.Models
     public class LogSettings
     {
         public string LogLevel { get; set; } = "Information";
-        public string LogFilePath { get; set; } = "logs/smtp-relay.log";
-        public string RollingInterval { get; set; } = "Day";
+        public string LogLocation { get; set; } = "logs";
     }
 }

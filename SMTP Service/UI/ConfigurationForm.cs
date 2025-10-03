@@ -1,5 +1,6 @@
 using System.Windows.Forms;
 using SMTP_Service.Models;
+using SMTP_Service.Helpers;
 using Serilog;
 using Microsoft.Extensions.Logging;
 
@@ -31,6 +32,9 @@ namespace SMTP_Service.UI
 
         // Application Settings Controls
         private ComboBox cmbRunMode = null!;
+        private TextBox txtLogLocation = null!;
+        private Button btnBrowseLog = null!;
+        private Button btnOpenLogs = null!;
 
         // Test Email Controls
         private TextBox txtTestTo = null!;
@@ -111,7 +115,7 @@ namespace SMTP_Service.UI
 
         private void InitializeComponents()
         {
-            this.Text = "SMTP to Graph Relay - Configuration v1.4.2";
+            this.Text = $"SMTP to Graph Relay - Configuration v{VersionHelper.GetVersion()}";
             this.Size = new System.Drawing.Size(600, 700);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -505,6 +509,50 @@ namespace SMTP_Service.UI
             };
             tab.Controls.Add(lblDelay);
             tab.Controls.Add(numRetryDelay);
+
+            y += 50;
+
+            // Log Location Section
+            var lblLogHeader = new Label 
+            { 
+                Text = "Log Location:", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblLogHeader);
+
+            y += 30;
+
+            var lblLogPath = new Label { Text = "Log Directory:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(100, 20) };
+            txtLogLocation = new TextBox 
+            { 
+                Location = new System.Drawing.Point(130, y), 
+                Size = new System.Drawing.Size(300, 20),
+                ReadOnly = true
+            };
+            btnBrowseLog = new Button
+            {
+                Text = "Browse...",
+                Location = new System.Drawing.Point(440, y - 2),
+                Size = new System.Drawing.Size(80, 24)
+            };
+            btnBrowseLog.Click += BtnBrowseLog_Click;
+            
+            tab.Controls.Add(lblLogPath);
+            tab.Controls.Add(txtLogLocation);
+            tab.Controls.Add(btnBrowseLog);
+
+            y += 35;
+
+            btnOpenLogs = new Button
+            {
+                Text = "Open Logs Folder",
+                Location = new System.Drawing.Point(130, y),
+                Size = new System.Drawing.Size(130, 30)
+            };
+            btnOpenLogs.Click += BtnOpenLogs_Click;
+            tab.Controls.Add(btnOpenLogs);
         }
 
         private void InitializeTestEmailTab(TabPage tab)
@@ -641,7 +689,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblTotalSuccess!);
+            panelGlobal.Controls.Add(lblTotalSuccess);
 
             lblTotalFailed = new Label
             {
@@ -650,7 +698,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblTotalFailed!);
+            panelGlobal.Controls.Add(lblTotalFailed);
 
             lblLastSuccess = new Label
             {
@@ -659,7 +707,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblLastSuccess!);
+            panelGlobal.Controls.Add(lblLastSuccess);
 
             lblLastFailure = new Label
             {
@@ -668,7 +716,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Regular)
             };
-            panelGlobal.Controls.Add(lblLastFailure!);
+            panelGlobal.Controls.Add(lblLastFailure);
 
             lblQueueCount = new Label
             {
@@ -677,7 +725,7 @@ namespace SMTP_Service.UI
                 Size = new System.Drawing.Size(250, 20),
                 Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
             };
-            panelGlobal.Controls.Add(lblQueueCount!);
+            panelGlobal.Controls.Add(lblQueueCount);
 
             tab.Controls.Add(panelGlobal);
 
@@ -1106,6 +1154,21 @@ namespace SMTP_Service.UI
 
             // Load Application settings
             cmbRunMode.SelectedIndex = _config.ApplicationSettings.RunMode;
+            
+            // Convert log location to absolute path for display
+            var logLocation = _config.LogSettings.LogLocation;
+            if (string.IsNullOrWhiteSpace(logLocation))
+            {
+                txtLogLocation.Text = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+            }
+            else if (!Path.IsPathRooted(logLocation))
+            {
+                txtLogLocation.Text = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, logLocation);
+            }
+            else
+            {
+                txtLogLocation.Text = logLocation;
+            }
 
             // Wire up change tracking after loading initial values
             WireUpChangeTracking();
@@ -1183,6 +1246,7 @@ namespace SMTP_Service.UI
 
             // Application Settings
             cmbRunMode.SelectedIndexChanged += (s, e) => MarkAsChanged();
+            txtLogLocation.TextChanged += (s, e) => MarkAsChanged();
         }
 
         private void MarkAsChanged()
@@ -1271,8 +1335,10 @@ namespace SMTP_Service.UI
             {
                 var baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 var configPath = Path.Combine(baseDir, "config", "smtp-config.json");
-                var logPath = _config.LogSettings.LogFilePath;
-                var logDir = Path.GetDirectoryName(logPath) ?? Path.Combine(baseDir, "logs");
+                var logLocation = _config.LogSettings.LogLocation;
+                var logDir = string.IsNullOrWhiteSpace(logLocation) 
+                    ? Path.Combine(baseDir, "logs")
+                    : (Path.IsPathRooted(logLocation) ? logLocation : Path.Combine(baseDir, logLocation));
                 
                 var message = "Application File Locations:\n\n" +
                               $"Application Directory:\n{baseDir}\n\n" +
@@ -1280,8 +1346,6 @@ namespace SMTP_Service.UI
                               $"Exists: {File.Exists(configPath)}\n\n" +
                               $"Log Directory:\n{logDir}\n" +
                               $"Exists: {Directory.Exists(logDir)}\n\n" +
-                              $"Log File:\n{logPath}\n" +
-                              $"Exists: {File.Exists(logPath)}\n\n" +
                               $"Click OK to open the application directory.";
                 
                 MessageBox.Show(message, "File Locations", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -1509,6 +1573,7 @@ namespace SMTP_Service.UI
                 _config.QueueSettings.RetryDelayMinutes = (int)numRetryDelay.Value;
 
                 _config.ApplicationSettings.RunMode = cmbRunMode.SelectedIndex;
+                _config.LogSettings.LogLocation = txtLogLocation.Text.Trim();
 
                 // Save configuration
                 _configManager.SaveConfiguration(_config);
@@ -1702,7 +1767,7 @@ namespace SMTP_Service.UI
                     $"Type: {ex.GetType().Name}\n" +
                     $"Message: {ex.Message}\n\n" +
                     $"Inner Exception: {ex.InnerException?.Message ?? "None"}\n\n" +
-                    $"Error details have been logged to: {_config.LogSettings.LogFilePath}",
+                    $"Error details have been logged.",
                     "Test Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -1815,6 +1880,72 @@ namespace SMTP_Service.UI
             {
                 btnSendTest.Enabled = true;
                 btnSendTest.Text = "Send Test Email";
+            }
+        }
+
+        private void BtnBrowseLog_Click(object? sender, EventArgs e)
+        {
+            // txtLogLocation.Text already contains the absolute path from LoadConfiguration
+            string currentLogLocation = txtLogLocation.Text;
+            
+            // If empty, default to logs folder
+            if (string.IsNullOrWhiteSpace(currentLogLocation))
+            {
+                currentLogLocation = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+            }
+
+            // Create directory if it doesn't exist so the browser can navigate to it
+            if (!Directory.Exists(currentLogLocation))
+            {
+                Directory.CreateDirectory(currentLogLocation);
+            }
+
+            using var folderBrowser = new FolderBrowserDialog
+            {
+                Description = "Select log directory",
+                ShowNewFolderButton = true,
+                SelectedPath = currentLogLocation,
+                RootFolder = Environment.SpecialFolder.MyComputer
+            };
+
+            if (folderBrowser.ShowDialog() == DialogResult.OK)
+            {
+                txtLogLocation.Text = folderBrowser.SelectedPath;
+                MarkAsChanged();
+            }
+        }
+
+        private void BtnOpenLogs_Click(object? sender, EventArgs e)
+        {
+            try
+            {
+                string logLocation = string.IsNullOrWhiteSpace(txtLogLocation.Text) 
+                    ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs")
+                    : txtLogLocation.Text;
+
+                // If relative path, make it absolute
+                if (!Path.IsPathRooted(logLocation))
+                {
+                    logLocation = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, logLocation);
+                }
+
+                // Create directory if it doesn't exist
+                if (!Directory.Exists(logLocation))
+                {
+                    Directory.CreateDirectory(logLocation);
+                }
+
+                // Open the directory
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = logLocation,
+                    UseShellExecute = true,
+                    Verb = "open"
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening logs folder: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

@@ -2,13 +2,22 @@ using SMTP_Service;
 using SMTP_Service.Services;
 using SMTP_Service.UI;
 using Serilog;
-using Serilog.Events;
 using System.Windows.Forms;
 using Microsoft.Extensions.Hosting.WindowsServices;
+
+// Check for pending update script replacement
+CheckAndReplaceUpdateScript();
 
 // Load configuration to check run mode
 var initialConfigManager = new SMTP_Service.Managers.ConfigurationManager();
 var initialConfig = initialConfigManager.LoadConfiguration();
+
+// Initialize logging first
+var logManager = new SMTP_Service.Managers.LogManager(
+    initialConfig.LogSettings.LogLocation,
+    initialConfig.LogSettings.LogLevel);
+
+string logFilePath = logManager.InitializeLogging();
 
 // Determine run mode: command line args override config setting
 bool runAsTray = args.Contains("--tray");
@@ -66,44 +75,28 @@ Console.WriteLine($"{runModeDescription}");
 Console.WriteLine($"Source: {runModeSource}");
 Console.WriteLine("==========================================\n");
 
+// Display log information
+Console.WriteLine($"Log File: {logFilePath}");
+Console.WriteLine($"Log Level: {initialConfig.LogSettings.LogLevel}");
+Console.WriteLine("==========================================\n");
+
+// Log startup information
+Log.Information("\n\n");
+Log.Information("================================================================================");
+Log.Information("===                        APPLICATION START                                ===");
+Log.Information("================================================================================");
+Log.Information("SMTP to Graph Relay - Application Started");
+Log.Information($"Run Mode: {runModeName} ({runModeDescription})");
+Log.Information($"Source: {runModeSource}");
+Log.Information($"Log File: {logFilePath}");
+Log.Information("================================================================================");
+
 // Check if running as tray application
 if (runAsTray)
 {
     Console.WriteLine("Starting in TRAY mode...");
     Console.WriteLine($"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
-    
-    // Initialize logging even in tray mode
-    var trayConfigManager = new SMTP_Service.Managers.ConfigurationManager();
-    var trayConfig = trayConfigManager.LoadConfiguration();
-    
     Console.WriteLine($"Configuration loaded from: {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "smtp-config.json")}");
-    Console.WriteLine($"Logs will be written to: {trayConfig.LogSettings.LogFilePath}");
-    
-    // Ensure logs directory exists
-    var trayLogDirectory = Path.GetDirectoryName(trayConfig.LogSettings.LogFilePath);
-    if (!string.IsNullOrEmpty(trayLogDirectory) && !Directory.Exists(trayLogDirectory))
-    {
-        Directory.CreateDirectory(trayLogDirectory);
-    }
-    
-    // Configure Serilog for tray mode
-    Log.Logger = new LoggerConfiguration()
-        .MinimumLevel.Is(Enum.Parse<LogEventLevel>(trayConfig.LogSettings.LogLevel))
-        .Enrich.FromLogContext()
-        .WriteTo.File(
-            trayConfig.LogSettings.LogFilePath,
-            rollingInterval: Enum.Parse<RollingInterval>(trayConfig.LogSettings.RollingInterval),
-            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-        .CreateLogger();
-    
-    Log.Information("\n\n");
-    Log.Information("================================================================================");
-    Log.Information("===                        APPLICATION START                                ===");
-    Log.Information("================================================================================");
-    Log.Information("SMTP to Graph Relay - Tray Application Started");
-    Log.Information($"Run Mode: {runModeName} ({runModeDescription})");
-    Log.Information($"Source: {runModeSource}");
-    Log.Information("================================================================================");
     
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
@@ -138,38 +131,9 @@ Console.WriteLine("============================================\n");
 var configManager = new SMTP_Service.Managers.ConfigurationManager();
 var config = configManager.LoadConfiguration();
 
-// Ensure logs directory exists
-var logDirectory = Path.GetDirectoryName(config.LogSettings.LogFilePath);
-if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
-{
-    Directory.CreateDirectory(logDirectory);
-    Console.WriteLine($"Created log directory: {logDirectory}");
-}
-
-// Configure Serilog
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Is(Enum.Parse<LogEventLevel>(config.LogSettings.LogLevel))
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
-    .Enrich.FromLogContext()
-    .WriteTo.Console()
-    .WriteTo.File(
-        config.LogSettings.LogFilePath,
-        rollingInterval: Enum.Parse<RollingInterval>(config.LogSettings.RollingInterval),
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
-
 try
 {
-    Console.WriteLine("Configuring Serilog...");
-    Log.Information("\n\n");
-    Log.Information("================================================================================");
-    Log.Information("===                        APPLICATION START                                ===");
-    Log.Information("================================================================================");
-    Log.Information("Starting SMTP to MS Graph Relay Service");
-    Log.Information($"Run Mode: {runModeName} ({runModeDescription})");
-    Log.Information($"Source: {runModeSource}");
-    Log.Information("================================================================================");
+    Console.WriteLine("Configuring services...");
     Log.Information($"SMTP Port: {config.SmtpSettings.Port}");
     Log.Information($"Authentication Required: {config.SmtpSettings.RequireAuthentication}");
     Log.Information($"Configured Users: {config.SmtpSettings.Credentials.Count}");
@@ -256,4 +220,50 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
+}
+
+// Local function to handle update script replacement
+void CheckAndReplaceUpdateScript()
+{
+    try
+    {
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var newScriptPath = Path.Combine(baseDir, "Install-Update-NEW.ps1");
+        var oldScriptPath = Path.Combine(baseDir, "Install-Update.ps1");
+
+        if (File.Exists(newScriptPath))
+        {
+            Console.WriteLine("==========================================");
+            Console.WriteLine("   PENDING UPDATE SCRIPT REPLACEMENT");
+            Console.WriteLine("==========================================");
+            Console.WriteLine();
+            Console.WriteLine("Detected new update script from previous update.");
+            Console.WriteLine("Replacing Install-Update.ps1...");
+
+            // Delete the old script if it exists
+            if (File.Exists(oldScriptPath))
+            {
+                File.Delete(oldScriptPath);
+                Console.WriteLine("[OK] Removed old update script");
+            }
+
+            // Rename the new script
+            File.Move(newScriptPath, oldScriptPath);
+            Console.WriteLine("[OK] New update script activated");
+            Console.WriteLine();
+            Console.WriteLine("Update script replacement complete!");
+            Console.WriteLine("==========================================");
+            Console.WriteLine();
+
+            // Small delay to let user see the message
+            Thread.Sleep(1000);
+        }
+    }
+    catch (Exception ex)
+    {
+        // Don't crash the application if this fails, just log it
+        Console.WriteLine($"WARNING: Could not replace update script: {ex.Message}");
+        Console.WriteLine("This will not affect normal operation.");
+        Console.WriteLine();
+    }
 }

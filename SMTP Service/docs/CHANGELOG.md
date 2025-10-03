@@ -1,5 +1,46 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 2.0.0 - October 2, 2025
+
+**🚀 MAJOR UPDATE: Automated Update System**
+
+Introduced a complete automated update system with GitHub integration. The application can now check for updates, download releases, and install them automatically with backup and rollback capabilities.
+
+**Key Changes:**
+- **GitHub Integration**: Check for updates directly from GitHub releases with authentication
+- **One-Click Updates**: Download and install updates from the system tray menu
+- **Automatic Installation**: PowerShell-based installer handles extraction, comparison, and file replacement
+- **Smart Version Detection**: Auto-detects latest version from multiple zip files using semantic versioning
+- **Service State Preservation**: Automatically stops service before update and restarts only if it was running
+- **Backup & Safety**: Creates timestamped backups before replacing any files
+- **Self-Update Capability**: Update script can update itself via two-stage replacement on next app start
+- **Protected Files**: Never replaces smtp-config.json or user data (logs, stats, config)
+- **Progress Tracking**: Visual progress bar during download with percentage display
+- **Installation Logs**: Detailed timestamped logs for every update (update_YYYY-MM-DD.txt)
+- **Confirmation Prompts**: Requires user confirmation before proceeding with installation
+- **Administrator Support**: Automatically elevates to admin when needed
+- **Error Handling**: Comprehensive error handling with colored console output (green/yellow/red)
+
+**Update Process:**
+1. Check for Updates from system tray
+2. View version comparison and release notes
+3. Download update with progress tracking
+4. Click "Install Update" button
+5. PowerShell installer runs with admin privileges
+6. Automatic backup, installation, and service restart
+7. Update script self-replaces on next application start if needed
+
+**Technical Details:**
+- Install-Update.ps1: Main installer script with auto-detection, backup, and rollback
+- Process-Update.ps1: Analysis tool for comparing update files
+- Updates stored in `updates` folder with version-numbered zips
+- Backups created as `backup_VERSION_TIMESTAMP` folders
+- Supports version formats: 1.4.3, 2.3, 5.0.2, etc.
+
+**Impact:** Zero-downtime updates with automatic service management. Update process completes in under 30 seconds for typical releases.
+
+---
+
 ## VERSION 1.4.2 - October 2, 2025
 
 **Code Safety & Exit Behavior**

@@ -1,6 +1,7 @@
 using System.Windows.Forms;
 using System.Diagnostics;
 using Serilog;
+using SMTP_Service.Services;
 
 namespace SMTP_Service.UI
 {
@@ -26,11 +27,13 @@ namespace SMTP_Service.UI
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
+            var updateMenuItem = new ToolStripMenuItem("Check for Updates", null, CheckForUpdates);
             var separatorItem = new ToolStripSeparator();
 
             _contextMenu.Items.Add(configMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
+            _contextMenu.Items.Add(updateMenuItem);
             _contextMenu.Items.Add(separatorItem);
 
             // Check if service is installed and add appropriate menu items
@@ -129,13 +132,23 @@ namespace SMTP_Service.UI
                 var config = configManager.LoadConfiguration();
                 
                 // Get the log directory from configuration
-                var logFilePath = config.LogSettings.LogFilePath;
-                var logDirectory = Path.GetDirectoryName(logFilePath);
+                var logLocation = config.LogSettings.LogLocation;
+                string logDirectory;
                 
-                if (string.IsNullOrEmpty(logDirectory))
+                if (string.IsNullOrWhiteSpace(logLocation))
                 {
                     // Fallback to base directory + logs
                     logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                }
+                else if (!Path.IsPathRooted(logLocation))
+                {
+                    // Relative path - make it absolute
+                    logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, logLocation);
+                }
+                else
+                {
+                    // Already absolute path
+                    logDirectory = logLocation;
                 }
                 
                 // Create the directory if it doesn't exist
@@ -153,7 +166,6 @@ namespace SMTP_Service.UI
                     MessageBox.Show(
                         $"Log directory exists but no log files found yet.\n\n" +
                         $"Location: {logDirectory}\n\n" +
-                        $"Expected log file: {logFilePath}\n\n" +
                         $"Logs will be created when the service runs or tests are performed.\n\n" +
                         $"Tip: Use 'Show File Locations' to see all paths.",
                         "No Logs Yet",
@@ -318,11 +330,13 @@ namespace SMTP_Service.UI
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
+            var updateMenuItem = new ToolStripMenuItem("Check for Updates", null, CheckForUpdates);
             var separatorItem = new ToolStripSeparator();
 
             _contextMenu.Items.Add(configMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
+            _contextMenu.Items.Add(updateMenuItem);
             _contextMenu.Items.Add(separatorItem);
 
             // Check if service is installed and add appropriate menu items
@@ -401,6 +415,182 @@ namespace SMTP_Service.UI
             catch (Exception ex)
             {
                 MessageBox.Show($"Error executing service command: {ex.Message}\n\nYou may need to run this application as administrator.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void CheckForUpdates(object? sender, EventArgs e)
+        {
+            try
+            {
+                var updateService = new UpdateService();
+                
+                // Check for updates
+                var result = await updateService.CheckForUpdateAsync();
+                
+                if (!string.IsNullOrEmpty(result.Error))
+                {
+                    MessageBox.Show(
+                        $"Unable to check for updates:\n{result.Error}\n\n" +
+                        "Make sure you have configured GitHub updates using Setup-GitHubToken.ps1",
+                        "Update Check Failed",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                if (result.Available)
+                {
+                    var message = $"A new version is available!\n\n" +
+                                 $"Current Version: {result.CurrentVersion}\n" +
+                                 $"Latest Version: {result.LatestVersion}\n" +
+                                 $"File: {result.FileName} ({result.FileSize / 1024 / 1024:N1} MB)\n\n";
+                    
+                    if (!string.IsNullOrEmpty(result.ReleaseNotes))
+                    {
+                        var notes = result.ReleaseNotes;
+                        if (notes.Length > 200)
+                            notes = notes.Substring(0, 197) + "...";
+                        message += $"Release Notes:\n{notes}\n\n";
+                    }
+                    
+                    message += "Would you like to download the update?";
+                    
+                    if (MessageBox.Show(message, "Update Available",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    {
+                        // Show progress dialog
+                        var progressDialog = new UpdateProgressDialog();
+                        
+                        // Start download in background
+                        _ = Task.Run(async () =>
+                        {
+                            var progress = new Progress<int>(percent => progressDialog.UpdateProgress(percent));
+                            var success = await updateService.DownloadUpdateAsync(
+                                result.DownloadUrl!, result.FileName!, progress);
+                            
+                            if (success)
+                            {
+                                progressDialog.CompleteDownload();
+                            }
+                            else
+                            {
+                                progressDialog.ShowError("Download failed");
+                            }
+                        });
+                        
+                        // Show dialog
+                        var dialogResult = progressDialog.ShowDialog();
+                        
+                        if (progressDialog.InstallRequested)
+                        {
+                            // Get the downloaded file path
+                            var downloadedFile = updateService.GetDownloadedFilePath();
+                            
+                            if (!string.IsNullOrEmpty(downloadedFile) && File.Exists(downloadedFile))
+                            {
+                                // Extract version from filename (e.g., "1.4.3.zip" -> "1.4.3")
+                                var fileName = Path.GetFileNameWithoutExtension(downloadedFile);
+                                
+                                try
+                                {
+                                    // Path to the Install-Update.ps1 script
+                                    var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                                    var scriptPath = Path.Combine(baseDir, "Install-Update.ps1");
+                                    
+                                    if (!File.Exists(scriptPath))
+                                    {
+                                        MessageBox.Show(
+                                            $"Install-Update.ps1 not found at:\n{scriptPath}\n\n" +
+                                            "Please ensure the update script exists in the application directory.",
+                                            "Update Script Missing",
+                                            MessageBoxButtons.OK,
+                                            MessageBoxIcon.Error);
+                                        return;
+                                    }
+                                    
+                                    var confirmResult = MessageBox.Show(
+                                        $"The update installer will now run.\n\n" +
+                                        $"Version: {fileName}\n\n" +
+                                        "The installer will:\n" +
+                                        "• Stop the SMTP Service if running\n" +
+                                        "• Backup existing files\n" +
+                                        "• Install the update\n" +
+                                        "• Restart the service if it was running\n\n" +
+                                        "A PowerShell window will open to show the installation progress.\n\n" +
+                                        "Do you want to continue?",
+                                        "Confirm Update Installation",
+                                        MessageBoxButtons.YesNo,
+                                        MessageBoxIcon.Question);
+                                    
+                                    if (confirmResult == DialogResult.Yes)
+                                    {
+                                        Log.Information($"Launching update installer for version {fileName}");
+                                        
+                                        // Launch PowerShell with the Install-Update.ps1 script
+                                        var process = new Process
+                                        {
+                                            StartInfo = new ProcessStartInfo
+                                            {
+                                                FileName = "powershell.exe",
+                                                Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                                                WorkingDirectory = baseDir,
+                                                UseShellExecute = true,
+                                                Verb = "runas" // Run as administrator
+                                            }
+                                        };
+                                        
+                                        process.Start();
+                                        
+                                        MessageBox.Show(
+                                            "Update installer launched!\n\n" +
+                                            "Follow the prompts in the PowerShell window.\n\n" +
+                                            "The application will restart automatically if the service was running.",
+                                            "Update In Progress",
+                                            MessageBoxButtons.OK,
+                                            MessageBoxIcon.Information);
+                                    }
+                                }
+                                catch (System.ComponentModel.Win32Exception)
+                                {
+                                    MessageBox.Show(
+                                        "Administrator privileges are required to install the update.\n\n" +
+                                        "Please run the application as administrator and try again.",
+                                        "Administrator Required",
+                                        MessageBoxButtons.OK,
+                                        MessageBoxIcon.Warning);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Error(ex, "Failed to launch update installer");
+                                    MessageBox.Show(
+                                        $"Failed to launch update installer:\n{ex.Message}\n\n" +
+                                        $"You can manually run Install-Update.ps1 from:\n{AppDomain.CurrentDomain.BaseDirectory}",
+                                        "Update Installation Failed",
+                                        MessageBoxButtons.OK,
+                                        MessageBoxIcon.Error);
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"You have the latest version ({result.CurrentVersion})\n\n" +
+                        "No updates are available at this time.",
+                        "No Updates Available",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error checking for updates");
+                MessageBox.Show(
+                    $"An error occurred while checking for updates:\n{ex.Message}",
+                    "Update Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
