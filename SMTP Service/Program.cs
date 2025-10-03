@@ -46,17 +46,17 @@ string runModeSource;
 if (runAsTray)
 {
     runModeName = "Tray Only";
-    runModeDescription = "RunMode 2: System tray icon only";
+    runModeDescription = "RunMode 2: System tray icon only (no console)";
 }
 else if (runAsConsoleWithTray)
 {
     runModeName = "Console + Tray";
-    runModeDescription = "RunMode 1: Console with system tray icon (DEFAULT)";
+    runModeDescription = "RunMode 1: Console with system tray icon";
 }
 else
 {
-    runModeName = "Service/Console";
-    runModeDescription = "RunMode 0: Service or console mode";
+    runModeName = "Service Mode";
+    runModeDescription = "RunMode 0: Service mode with tray icon (console hidden)";
 }
 
 // Determine source of run mode
@@ -108,17 +108,29 @@ if (runAsTray)
 }
 
 // Check if running in console mode with tray icon
-bool showTray = runAsConsoleWithTray;
+// Mode 0 (default) and Mode 1 both show tray, Mode 0 hides console initially
+bool showTray = runAsConsoleWithTray || (!runAsTray && !runAsConsoleWithTray); // Mode 0 or Mode 1
+bool hideConsoleOnStart = !runAsConsoleWithTray && !runAsTray; // Only Mode 0
 
 if (showTray)
 {
-    Console.WriteLine("Starting in CONSOLE + TRAY mode...");
-    Console.WriteLine("Console window will remain visible with system tray icon");
+    if (hideConsoleOnStart)
+    {
+        Console.WriteLine("Starting in SERVICE MODE with TRAY...");
+        Console.WriteLine("Console will be hidden - use tray icon to show/hide console");
+    }
+    else
+    {
+        Console.WriteLine("Starting in CONSOLE + TRAY mode...");
+        Console.WriteLine("Console window will remain visible with system tray icon");
+    }
     Console.WriteLine("============================================\n");
 }
 else
 {
-    Console.WriteLine("Starting in SERVICE/CONSOLE mode...");
+    Console.WriteLine("Starting in TRAY ONLY mode...");
+    Console.WriteLine("No console window - system tray icon only");
+    Console.WriteLine("============================================\n");
 }
 
 Console.WriteLine($"Current directory: {Directory.GetCurrentDirectory()}");
@@ -190,20 +202,34 @@ try
     SmtpLoggerFactory.Factory = loggerFactory;
     Console.WriteLine("Logger factory configured");
 
-    // If --console mode, start the tray icon in a separate thread
+    // If --console mode or Mode 0, start the tray icon in a separate thread
     if (showTray)
     {
         Console.WriteLine("Starting system tray icon...");
+        
+        TrayApplicationContext? trayContext = null;
         var trayThread = new Thread(() =>
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new TrayApplicationContext());
+            trayContext = new TrayApplicationContext();
+            Application.Run(trayContext);
         });
         trayThread.SetApartmentState(ApartmentState.STA);
         trayThread.IsBackground = true;
         trayThread.Start();
+        
+        // Wait a moment for the tray to initialize
+        Thread.Sleep(500);
         Console.WriteLine("System tray icon started. You can right-click it to access configuration.");
+        
+        // If Mode 0, hide the console after a brief delay to let startup messages show
+        if (hideConsoleOnStart)
+        {
+            Thread.Sleep(1500); // 1.5 more seconds to see startup messages
+            trayContext?.HideConsole();
+            Console.WriteLine("Console hidden. Use the system tray icon to show/hide console.");
+        }
     }
 
     Console.WriteLine("Starting host... (SMTP server should start now)");

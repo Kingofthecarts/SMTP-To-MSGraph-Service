@@ -17,17 +17,23 @@ $script:WasServiceRunning = $false
 
 # Function to get log file path with incremental numbering
 function Get-LogFilePath {
+    # Create logs folder if it doesn't exist
+    $logsFolder = Join-Path $RootPath "logs"
+    if (-not (Test-Path $logsFolder)) {
+        New-Item -Path $logsFolder -ItemType Directory -Force | Out-Null
+    }
+    
     $date = Get-Date -Format "yyyy-MM-dd"
     $logBaseName = "update_$date"
     $counter = 0
     $logFileName = "$logBaseName.txt"
     
-    while (Test-Path (Join-Path $RootPath $logFileName)) {
+    while (Test-Path (Join-Path $logsFolder $logFileName)) {
         $counter++
         $logFileName = "${logBaseName}_$(($counter).ToString('00')).txt"
     }
     
-    return Join-Path $RootPath $logFileName
+    return Join-Path $logsFolder $logFileName
 }
 
 # Function to write to log

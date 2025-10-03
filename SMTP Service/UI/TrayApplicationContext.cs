@@ -2,6 +2,7 @@ using System.Windows.Forms;
 using System.Diagnostics;
 using Serilog;
 using SMTP_Service.Services;
+using System.Runtime.InteropServices;
 
 namespace SMTP_Service.UI
 {
@@ -10,6 +11,18 @@ namespace SMTP_Service.UI
         private NotifyIcon _trayIcon = null!;
         private ContextMenuStrip _contextMenu = null!;
         private const string ServiceName = "SMTP to Graph Relay";
+        private ToolStripMenuItem? _consoleMenuItem;
+        private bool _consoleVisible = true; // Track console visibility state
+        
+        // Windows API for console window manipulation
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetConsoleWindow();
+        
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        
+        private const int SW_HIDE = 0;
+        private const int SW_SHOW = 5;
         
         // Static instance to allow other forms to refresh the menu
         public static TrayApplicationContext? Instance { get; private set; }
@@ -24,17 +37,24 @@ namespace SMTP_Service.UI
         {
             _contextMenu = new ContextMenuStrip();
             
+            // Add Console toggle menu item first if console is available
+            if (GetConsoleWindow() != IntPtr.Zero)
+            {
+                _consoleMenuItem = new ToolStripMenuItem("Hide Console", null, ToggleConsole);
+                _contextMenu.Items.Add(_consoleMenuItem);
+                _contextMenu.Items.Add(new ToolStripSeparator());
+            }
+            
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
             var updateMenuItem = new ToolStripMenuItem("Check for Updates", null, CheckForUpdates);
-            var separatorItem = new ToolStripSeparator();
 
             _contextMenu.Items.Add(configMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
             _contextMenu.Items.Add(updateMenuItem);
-            _contextMenu.Items.Add(separatorItem);
+            _contextMenu.Items.Add(new ToolStripSeparator());
 
             // Check if service is installed and add appropriate menu items
             if (IsServiceInstalled())
@@ -81,6 +101,53 @@ namespace SMTP_Service.UI
             catch
             {
                 return false;
+            }
+        }
+        
+        private void ToggleConsole(object? sender, EventArgs e)
+        {
+            var consoleWindow = GetConsoleWindow();
+            if (consoleWindow == IntPtr.Zero)
+            {
+                MessageBox.Show(
+                    "Console window is not available.\n\n" +
+                    "This feature is only available when running in console mode.",
+                    "Console Not Available",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+            
+            if (_consoleVisible)
+            {
+                // Hide console
+                ShowWindow(consoleWindow, SW_HIDE);
+                _consoleVisible = false;
+                if (_consoleMenuItem != null)
+                    _consoleMenuItem.Text = "Show Console";
+                Log.Information("Console window hidden via system tray");
+            }
+            else
+            {
+                // Show console
+                ShowWindow(consoleWindow, SW_SHOW);
+                _consoleVisible = true;
+                if (_consoleMenuItem != null)
+                    _consoleMenuItem.Text = "Hide Console";
+                Log.Information("Console window shown via system tray");
+            }
+        }
+        
+        public void HideConsole()
+        {
+            var consoleWindow = GetConsoleWindow();
+            if (consoleWindow != IntPtr.Zero)
+            {
+                ShowWindow(consoleWindow, SW_HIDE);
+                _consoleVisible = false;
+                if (_consoleMenuItem != null)
+                    _consoleMenuItem.Text = "Show Console";
+                Log.Information("Console window initially hidden on startup");
             }
         }
 
@@ -326,18 +393,28 @@ namespace SMTP_Service.UI
             // Clear existing menu items
             _contextMenu.Items.Clear();
             
+            // Add Console toggle menu item first if console is available
+            if (GetConsoleWindow() != IntPtr.Zero)
+            {
+                _consoleMenuItem = new ToolStripMenuItem(
+                    _consoleVisible ? "Hide Console" : "Show Console", 
+                    null, 
+                    ToggleConsole);
+                _contextMenu.Items.Add(_consoleMenuItem);
+                _contextMenu.Items.Add(new ToolStripSeparator());
+            }
+            
             // Rebuild the menu with updated service status
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
             var updateMenuItem = new ToolStripMenuItem("Check for Updates", null, CheckForUpdates);
-            var separatorItem = new ToolStripSeparator();
 
             _contextMenu.Items.Add(configMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
             _contextMenu.Items.Add(updateMenuItem);
-            _contextMenu.Items.Add(separatorItem);
+            _contextMenu.Items.Add(new ToolStripSeparator());
 
             // Check if service is installed and add appropriate menu items
             if (IsServiceInstalled())
