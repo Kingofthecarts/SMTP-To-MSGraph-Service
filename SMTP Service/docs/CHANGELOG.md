@@ -1,5 +1,67 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 3.2.1 - October 3, 2025
+
+**Update System Improvements**
+
+Enhanced the update installer with better backup organization, automatic cleanup, and self-update capability.
+
+### Changes
+
+**Backup Management:**
+- Backups now stored in centralized `backup` folder instead of root directory
+- Automatic migration of existing backup folders to new location
+- Complete backup of all files except logs, updates, and backup folders
+- Automatic retention: keeps only 20 most recent backups
+- Added protection for `.backup` files and `update_*.txt` files from deletion
+
+**Self-Update Capability:**
+- Update script can now update itself through a two-stage process
+- When updated, creates Install-Update-NEW.ps1 for next run
+- Automatically swaps and relaunches with preserved parameters
+- Cleans up temporary files after successful swap
+
+**Impact:** Cleaner root directory, automatic disk space management, more comprehensive backups, and fully self-maintaining update system.
+
+---
+
+## VERSION 3.2.0 - October 3, 2025
+
+**Multi-Instance Support & Service Mode Improvements**
+
+Enhanced run modes with multi-instance configuration support and pure background service mode.
+
+### New Features
+
+**Multi-Instance Configuration**
+- Launch app while service is running to show UI-only configuration mode
+- Multiple instances can configure the same running service
+- Uses named mutex for service detection
+
+**Pure Service Mode (Mode 0)**
+- Mode 0 is now true background service (no console, no tray)
+- Minimal memory footprint (~50 MB vs ~70 MB)
+- Configure by launching another instance while service is running
+
+**Close Console (Mode 1)**
+- "Close Console" button actually frees console memory using FreeConsole()
+- Saves ~10-20 MB of memory
+- Console cannot be reopened without restarting app
+
+### Changes
+
+**Run Modes:**
+- Mode 0: Service Mode (pure background, no UI)
+- Mode 1: Console with Tray (can close console from tray)
+- Mode 2: Tray Only (no console, tray icon only)
+
+**UI Updates:**
+- Tray tooltip shows "Configuration UI" when in UI-only mode
+- Service Status indicates if running in UI-only mode
+- Updated configuration descriptions
+
+---
+
 ## VERSION 3.1.0 - October 3, 2025
 
 **Console Toggle & Run Mode Improvements**

@@ -10,7 +10,7 @@ $UpdatesFolder = Join-Path $RootPath "updates"
 
 # Files and folders to exclude from replacement
 $ExcludedFiles = @("smtp-config.json")
-$ExcludedFolders = @("logs", "stats", "updates")
+$ExcludedFolders = @("logs", "stats", "updates", "backup")
 
 # Track if service was running
 $script:WasServiceRunning = $false
@@ -170,6 +170,102 @@ function Stop-SmtpService {
 # Initialize log file
 $script:LogFile = Get-LogFilePath
 
+# =============================================================================
+# SELF-UPDATE CHECK
+# If a previous update included a new version of this script, it was saved as
+# Install-Update-NEW.ps1 because we couldn't replace ourselves while running.
+# Now we detect it, swap it in, and RESTART THE ENTIRE UPDATE PROCESS from
+# the beginning with the new script version.
+# =============================================================================
+
+# Check if there's a new update script to swap in
+$NewUpdateScript = Join-Path $RootPath "Install-Update-NEW.ps1"
+if (Test-Path $NewUpdateScript) {
+    Write-Log "=========================================="
+    Write-Log "    UPDATE SCRIPT SELF-UPDATE DETECTED"
+    Write-Log "=========================================="
+    Write-Log ""
+    Write-Log "Found new update script: Install-Update-NEW.ps1"
+    Write-Log "The update script itself needs to be updated."
+    Write-Log "Will swap in the new version and restart the update from the beginning."
+    
+    # Check if the new script is different from the current one
+    $currentScript = Join-Path $RootPath "Install-Update.ps1"
+    $currentHash = (Get-FileHash -Path $currentScript -Algorithm SHA256).Hash
+    $newHash = (Get-FileHash -Path $NewUpdateScript -Algorithm SHA256).Hash
+    
+    if ($currentHash -eq $newHash) {
+        Write-Log "[WARNING] New script is identical to current script"
+        Write-Log "Removing duplicate Install-Update-NEW.ps1 and continuing..."
+        Remove-Item $NewUpdateScript -Force
+        Write-Log ""
+    }
+    else {
+        Write-Log "Swapping in new version and restarting entire update process..."
+        
+        try {
+            # Backup current script
+            $BackupScript = Join-Path $RootPath "Install-Update-OLD.ps1"
+            if (Test-Path $BackupScript) {
+                Remove-Item $BackupScript -Force
+            }
+            Copy-Item (Join-Path $RootPath "Install-Update.ps1") -Destination $BackupScript -Force
+            Write-Log "[OK] Current script backed up to Install-Update-OLD.ps1"
+            
+            # Replace with new version
+            Copy-Item $NewUpdateScript -Destination (Join-Path $RootPath "Install-Update.ps1") -Force
+            Write-Log "[OK] New update script installed"
+            
+            # Remove the NEW file
+            Remove-Item $NewUpdateScript -Force
+            Write-Log "[OK] Temporary NEW script removed"
+            
+            # Prepare arguments for relaunch
+            $arguments = @()
+            if (-not [string]::IsNullOrEmpty($Version)) {
+                $arguments += "-Version"
+                $arguments += $Version
+            }
+            if ($NoRestart) {
+                $arguments += "-NoRestart"
+            }
+            
+            Write-Log ""
+            Write-Log "RESTARTING UPDATE PROCESS FROM THE BEGINNING WITH NEW SCRIPT..."
+            Write-Log "Arguments: $($arguments -join ' ')"
+            Write-Log "=========================================="
+            Write-Log ""
+            
+            Write-Host "" -ForegroundColor Yellow
+            Write-Host "===== AUTOMATICALLY RESTARTING UPDATE WITH NEW SCRIPT =====" -ForegroundColor Yellow
+            Write-Host "Please wait, the update will continue automatically..." -ForegroundColor Yellow  
+            Write-Host "" -ForegroundColor Yellow
+            
+            # Give a moment for file operations to complete and user to see message
+            Start-Sleep -Seconds 3
+            
+            # Relaunch the script from the beginning in a new window
+            $scriptPath = Join-Path $RootPath "Install-Update.ps1"
+            if ($arguments.Count -gt 0) {
+                Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"", @arguments
+            } else {
+                Start-Process powershell.exe -ArgumentList "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`""
+            }
+            
+            Write-Host "New update script launched. This window will now close..." -ForegroundColor Green
+            Start-Sleep -Seconds 2
+            
+            # Exit this instance immediately
+            exit 0
+        }
+        catch {
+            Write-Log "[ERROR] Failed to swap update script: $($_.Exception.Message)"
+            Write-Log "Continuing with current version..."
+            Write-Log ""
+        }
+    }
+}
+
 # Auto-detect version if not specified
 if ([string]::IsNullOrEmpty($Version)) {
     Write-Log "=========================================="
@@ -303,8 +399,18 @@ foreach ($currentFile in $CurrentFiles) {
         continue
     }
     
-    # Skip if it's a backup folder
-    if ($relativePath -like "backup_*\*" -or $relativePath -like "backup_*") {
+    # Skip if it's a backup folder (both old style and new central backup)
+    if ($relativePath -like "backup_*\*" -or $relativePath -like "backup_*" -or $relativePath -like "backup\*" -or $relativePath -eq "backup") {
+        continue
+    }
+    
+    # Skip .backup files
+    if ($currentFile.Extension -eq ".backup") {
+        continue
+    }
+    
+    # Skip update_*.txt files
+    if ($currentFile.Name -like "update_*.txt") {
         continue
     }
     
@@ -387,9 +493,77 @@ Write-Log "Step 5: Installing update..."
 Write-Log "=========================================="
 Write-Log ""
 
-$BackupFolder = Join-Path $RootPath "backup_$Version_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+# Create central backup folder if it doesn't exist
+$CentralBackupFolder = Join-Path $RootPath "backup"
+if (-not (Test-Path $CentralBackupFolder)) {
+    New-Item -Path $CentralBackupFolder -ItemType Directory -Force | Out-Null
+    Write-Log "Created central backup folder: $CentralBackupFolder"
+}
+
+# Move any existing backup folders from root to central backup folder
+$existingBackups = Get-ChildItem -Path $RootPath -Directory -Filter "backup_*"
+if ($existingBackups.Count -gt 0) {
+    Write-Log "Found $($existingBackups.Count) existing backup(s) in root - moving to central backup folder..."
+    foreach ($oldBackup in $existingBackups) {
+        try {
+            $newPath = Join-Path $CentralBackupFolder $oldBackup.Name
+            Move-Item -Path $oldBackup.FullName -Destination $newPath -Force
+            Write-Log "  [OK] Moved: $($oldBackup.Name)"
+        }
+        catch {
+            Write-Log "  [WARNING] Could not move: $($oldBackup.Name) - $($_.Exception.Message)"
+        }
+    }
+    Write-Log ""
+}
+
+# Create new backup subfolder with timestamp
+$BackupName = "backup_$Version_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+$BackupFolder = Join-Path $CentralBackupFolder $BackupName
 New-Item -Path $BackupFolder -ItemType Directory -Force | Out-Null
-Write-Log "Backup folder created: $BackupFolder"
+Write-Log "Creating backup: $BackupName"
+Write-Log "  Location: $BackupFolder"
+
+# Backup all files except logs, updates, and backup folders
+$foldersToExclude = @("logs", "updates", "backup")
+$allItems = Get-ChildItem -Path $RootPath -Recurse
+foreach ($item in $allItems) {
+    $relativePath = $item.FullName.Substring($RootPath.Length + 1)
+    
+    # Skip excluded folders
+    $skip = $false
+    foreach ($excludeFolder in $foldersToExclude) {
+        if ($relativePath -like "$excludeFolder\*" -or $relativePath -eq $excludeFolder) {
+            $skip = $true
+            break
+        }
+    }
+    
+    if (-not $skip) {
+        $backupPath = Join-Path $BackupFolder $relativePath
+        
+        if ($item.PSIsContainer) {
+            # Create directory
+            if (-not (Test-Path $backupPath)) {
+                New-Item -Path $backupPath -ItemType Directory -Force | Out-Null
+            }
+        }
+        else {
+            # Copy file
+            $backupDir = Split-Path -Parent $backupPath
+            if (-not (Test-Path $backupDir)) {
+                New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
+            }
+            try {
+                Copy-Item -Path $item.FullName -Destination $backupPath -Force
+            }
+            catch {
+                Write-Log "  [WARNING] Could not backup: $relativePath"
+            }
+        }
+    }
+}
+Write-Log "[OK] Backup created successfully"
 Write-Log ""
 
 $updateSuccess = $true
@@ -398,21 +572,17 @@ $updateSuccess = $true
 foreach ($file in $FilesToReplace) {
     try {
         # Special handling for Install-Update.ps1 (can't replace itself while running)
+        # This creates Install-Update-NEW.ps1 which will be swapped in on the NEXT run
         if ($file.Path -eq "Install-Update.ps1") {
-            Write-Log "SPECIAL: Install-Update.ps1 detected - saving as Install-Update-NEW.ps1"
+            Write-Log "SPECIAL: Install-Update.ps1 needs updating"
             $newScriptPath = Join-Path $RootPath "Install-Update-NEW.ps1"
             Copy-Item -Path $file.SourcePath -Destination $newScriptPath -Force
-            Write-Log "[OK] New update script saved - will be activated on next application start"
+            Write-Log "[OK] New update script saved as Install-Update-NEW.ps1"
+            Write-Log "     It will be automatically swapped in on next update run"
             continue
         }
         
-        # Backup original
-        $backupPath = Join-Path $BackupFolder $file.Path
-        $backupDir = Split-Path -Parent $backupPath
-        if (-not (Test-Path $backupDir)) {
-            New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
-        }
-        Copy-Item -Path $file.DestPath -Destination $backupPath -Force
+        # Note: File already backed up in the full backup step above
         
         # Copy new file
         Copy-Item -Path $file.SourcePath -Destination $file.DestPath -Force
@@ -445,23 +615,17 @@ foreach ($file in $NewFiles) {
     }
 }
 
-# Remove orphaned files (backup first)
+# Remove orphaned files (already backed up in the full backup step)
 if ($OrphanedFiles.Count -gt 0) {
     Write-Log ""
     Write-Log "Removing orphaned files..."
     foreach ($file in $OrphanedFiles) {
         try {
-            # Backup the file first
-            $backupPath = Join-Path $BackupFolder $file.Path
-            $backupDir = Split-Path -Parent $backupPath
-            if (-not (Test-Path $backupDir)) {
-                New-Item -Path $backupDir -ItemType Directory -Force | Out-Null
-            }
-            Copy-Item -Path $file.FullPath -Destination $backupPath -Force
+            # Note: File already backed up in the full backup step above
             
-            # Now delete the file
+            # Delete the file
             Remove-Item -Path $file.FullPath -Force
-            Write-Log "[OK] Removed: $($file.Path) (backed up)"
+            Write-Log "[OK] Removed: $($file.Path)"
         }
         catch {
             Write-Log "[ERROR] Failed to remove: $($file.Path)"
@@ -526,6 +690,14 @@ if ($updateSuccess) {
         Write-Log "Files removed: $($OrphanedFiles.Count)"
     }
     Write-Log "Backup location: $BackupFolder"
+    
+    # Check if this was a restart after self-update
+    $OldScript = Join-Path $RootPath "Install-Update-OLD.ps1"
+    if (Test-Path $OldScript) {
+        Write-Log ""
+        Write-Log "Note: Update script was also updated during this process"
+    }
+    
     Write-Log ""
     
     # Only restart if it was running before AND NoRestart not specified
@@ -586,6 +758,47 @@ else {
     Write-Log ""
     Write-Log "Some files could not be updated. Check log for details."
     Write-Log "Backup location: $BackupFolder"
+}
+
+# Step 8: Cleanup old backups (keep only 20 most recent)
+Write-Log ""
+Write-Log "Step 8: Backup maintenance..."
+Write-Log "=========================================="
+Write-Log ""
+
+if (Test-Path $CentralBackupFolder) {
+    $allBackups = Get-ChildItem -Path $CentralBackupFolder -Directory -Filter "backup_*" | Sort-Object -Property LastWriteTime -Descending
+    
+    if ($allBackups.Count -gt 20) {
+        $backupsToRemove = $allBackups | Select-Object -Skip 20
+        Write-Log "Found $($allBackups.Count) backups - removing oldest $($backupsToRemove.Count) to keep only 20..."
+        
+        foreach ($oldBackup in $backupsToRemove) {
+            try {
+                Remove-Item -Path $oldBackup.FullName -Recurse -Force
+                Write-Log "  [OK] Removed old backup: $($oldBackup.Name)"
+            }
+            catch {
+                Write-Log "  [WARNING] Could not remove old backup: $($oldBackup.Name)"
+                Write-Log "    Error: $($_.Exception.Message)"
+            }
+        }
+    }
+    else {
+        Write-Log "Current backup count: $($allBackups.Count) (within 20 backup limit)"
+    }
+}
+
+# Clean up old update script backup if it exists
+$OldUpdateScript = Join-Path $RootPath "Install-Update-OLD.ps1"
+if (Test-Path $OldUpdateScript) {
+    try {
+        Remove-Item $OldUpdateScript -Force
+        Write-Log "[OK] Removed old update script backup (Install-Update-OLD.ps1)"
+    }
+    catch {
+        Write-Log "[WARNING] Could not remove Install-Update-OLD.ps1: $($_.Exception.Message)"
+    }
 }
 
 Write-Log ""
