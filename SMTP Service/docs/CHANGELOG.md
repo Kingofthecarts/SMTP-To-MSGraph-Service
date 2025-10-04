@@ -1,5 +1,18 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 4.0.1 - October 4, 2025
+
+### 🐛 Bug Fixes
+
+**Build System Cleanup**
+- Fixed compilation errors caused by duplicate class definitions
+- Resolved temp file conflicts during build process
+- Improved project organization for cleaner builds
+
+**Impact:** Project now builds successfully without errors. No functional changes to the application.
+
+---
+
 ## VERSION 4.0.0 - October 3, 2025
 
 ### 🎯 Major Release: SMTP Flow Control & Network Configuration
