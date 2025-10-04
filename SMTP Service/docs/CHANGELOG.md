@@ -1,5 +1,130 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 4.0.0 - October 3, 2025
+
+### 🎯 Major Release: SMTP Flow Control & Network Configuration
+
+This major version introduces real-time SMTP flow control, configurable network binding, and improved runtime state management integrated with the existing configuration system.
+
+### ✨ New Features
+
+**SMTP Flow Control System**
+- **Real-time Halt/Resume**: Stop and start SMTP server without restarting the service
+  - Instant rejection of connections when halted (421 Service Temporarily Unavailable)
+  - Console output: "HALT SMTP" (red) and "FLOW SMTP" (green) with color-coded status
+  - Available in Configuration UI, System Tray menu, and through IPC commands
+  - Runtime state persists during session, saved preference for startup
+  - Separate "Enable on Startup" configuration from runtime toggle
+
+**Network Binding Configuration**
+- **Configurable Interface Selection**: Control which network interface accepts SMTP connections
+  - **0.0.0.0** - All Interfaces (default) - accepts remote connections
+  - **127.0.0.1** - Localhost Only - restricts to local connections for security
+  - Changes require service restart to take effect
+  - Configuration saved in existing `smtp-config.json` file
+
+**Send Delay Configuration**
+- **Adjustable Processing Delay**: Control the pace of email processing
+  - Configurable delay between sending emails (100-10000ms)
+  - Helps prevent overwhelming downstream servers
+  - Applied during queue processing
+
+**Inter-Process Communication (IPC)**
+- **Named Pipes Infrastructure**: Enables real-time communication between UI and service
+  - Control flow state from any UI instance
+  - Query service status without direct service access
+  - Works in both same-process and separate-process modes
+  - Foundation for future remote management capabilities
+
+### 📦 Configuration Management
+
+**Integrated Configuration**
+- **Flow control settings integrated into existing SmtpSettings**: No separate configuration file needed
+  ```json
+  {
+    "SmtpSettings": {
+      "BindAddress": "0.0.0.0",
+      "SendDelayMs": 1000,
+      "SmtpFlowEnabled": true
+    }
+  }
+  ```
+- **Runtime vs Saved State**: Flow toggle affects current session only until explicitly saved
+- **Automatic Backup**: Creates `smtp-config.json.backup` when saving configuration
+- **Startup Preference**: "Enable on Startup" checkbox controls whether flow starts enabled
+
+### 🔧 Technical Improvements
+
+- **SmtpFlowControl Singleton**: Centralized flow control with event system in `Flow` namespace
+- **Integrated with existing ConfigurationManager**: Uses project's existing configuration system
+- **CommandListenerService**: Named pipe server for IPC commands
+- **ServiceCommandClient**: Helper for sending commands to running service
+- **Improved UI State Management**: Runtime state separated from saved configuration
+- **Color-coded Console Output**: Visual feedback for flow state changes (using Serilog)
+
+### 🎨 User Interface Updates
+
+- **Flow Control Section**: New UI section in SMTP Settings tab
+  - Live status indicator (RUNNING/HALTED with color coding)
+  - Toggle button for immediate control
+  - "Enable on Startup" checkbox for saved preference
+- **Tray Menu Integration**: Quick access to flow control from system tray
+  - "Halt SMTP Flow" / "Resume SMTP Flow" with confirmation dialogs
+  - Status updates reflected in tooltip
+
+### 🛡️ Safety & Reliability
+
+- **Graceful Degradation**: Service continues if flow control initialization fails
+- **Uses existing configuration system**: No additional dependencies or configuration files
+- **Backup on Save**: Automatic backup of configuration before changes
+- **Default Values**: Sensible defaults in existing SmtpSettings class
+
+---
+
+## VERSION 3.5.0 - October 3, 2025
+
+### ✨ New Features
+
+**Auto-Update Configuration UI**
+- **Complete Update Settings Section**: Added comprehensive auto-update configuration in the Application Settings tab
+  - Enable/disable automatic updates with a master toggle
+  - Configure check frequency: Daily or Weekly schedules
+  - Set specific check time (default: 2:00 AM)
+  - Select day of week for weekly checks (Sunday through Saturday)
+  - Auto-download: Automatically download updates when available
+  - Auto-install: Automatically install downloaded updates (requires auto-download enabled)
+  - Check on startup: Option to check for updates when the service starts
+- **Update Status Tracking**: Real-time display of update activity
+  - Last Check: Timestamp of most recent update check
+  - Last Download: Timestamp of most recent update download
+  - Last Installed Version: Version number of the most recently installed update
+- **Smart UI Behavior**: 
+  - All update controls automatically disable when auto-updates are turned off
+  - Weekly day selector only appears when Weekly frequency is selected
+  - Auto-install checkbox only enables when auto-download is checked
+  - Dependency-aware control states prevent invalid configurations
+
+### 🔧 Improvements
+
+**Scrollable Configuration Tabs**
+- Added `AutoScroll = true` to all configuration tabs
+- Prevents content from being cut off at the bottom of tabs
+- Automatic scrollbars appear when content exceeds visible area
+- All settings now accessible regardless of screen resolution
+
+### 📦 Technical
+
+- Update settings fully integrated with `UpdateSettings` model in `AppConfig`
+- Settings persist across application restarts in smtp-config.json
+- `ScheduledUpdateService` reads configuration to manage automatic update checks
+- Change tracking ensures Save button enables when any update setting is modified
+
+### Impact
+
+Users can now fully configure the automatic update system through the GUI without editing configuration files. The scheduled update service respects all configured settings for checking, downloading, and installing updates automatically.
+
+---
+
 ## VERSION 3.4.0 - October 3, 2025
 
 ### ✨ New Features
@@ -310,131 +435,52 @@ Introduced a complete automated update system with GitHub integration. The appli
 ---
 
 ## VERSION 1.4.2 - October 2, 2025
-
-**Code Safety & Exit Behavior**
-
-Fixed all null reference warnings to improve code safety and resolved system tray exit behavior to properly terminate the application.
-
-**Key Changes:**
-- Fixed system tray "Exit" to properly terminate application using Environment.Exit()
-- Resolved all CS8602/CS8604 null reference warnings in Worker.cs, SmtpProtocolHandler.cs, and ConfigurationForm.cs
-- Added null-coalescing operators and null checks throughout codebase
-- Improved font initialization safety with fallback to GenericSansSerif
-- Enhanced authentication data handling with null safety
-
-**Impact:** Zero compiler warnings, more robust error handling, application now fully closes when exiting from system tray.
+- Fixed system tray "Exit" button to properly close the application
+- Resolved all null reference warnings for improved code safety
 
 ---
 
 ## VERSION 1.4.1 - October 2, 2025
-
-**Statistics Tracking & User Management**
-
-Added comprehensive email statistics tracking and reorganized user management. Track total successful/failed emails globally and per-user, with support for both authenticated users and IP addresses. Authentication is now optional by default, allowing both authenticated and unauthenticated connections.
-
-**Key Changes:**
-- Added Statistics tab showing global and per-user email metrics
-- Track successful/failed email counts with timestamps
-- Display current queue count in statistics
-- Per-user statistics show authentication status (Yes/No)
-- Moved user management to dedicated Users tab
-- Authentication now optional: when disabled, accepts both authenticated and unauthenticated connections
-- IP address tracking for unauthenticated connections
-- Statistics persist in stats/statistics.json
-
-**Authentication Behavior:**
-- Require Authentication ENABLED: Only authenticated users can send
-- Require Authentication DISABLED: Both authenticated and unauthenticated allowed (tracks by username or IP)
+- Added Statistics tab with email tracking (successful/failed counts per user and globally)
+- Authentication is now optional - allows both authenticated and unauthenticated connections
+- IP address tracking for unauthenticated senders
 
 ---
 
 ## VERSION 1.3.0 - October 1, 2025
-
-**🔥 CRITICAL FIX: Email Encoding & MIME Support**
-
-Fixed garbled HTML emails from Veeam and other applications by implementing complete MIME parsing with Base64/Quoted-Printable decoding, charset conversion (UTF-16/ISO-8859/Windows-1252 to UTF-8), and RFC 2047 header support. Emails now preserve formatting, tables, and special characters correctly.
-
-**Key Changes:**
-- Added full MIME header parsing and preservation
-- Implemented Base64 and Quoted-Printable content decoding
-- Added automatic charset detection and conversion to UTF-8
-- Enhanced HTML email handling with automatic charset meta tag injection
-- Updated configuration window title to show version number
-
-**Impact:** Backward compatible, no configuration changes required. Performance impact <5ms per email.
+- **CRITICAL FIX**: Fixed garbled HTML emails from Veeam and other applications
+- Added complete MIME parsing with charset conversion (UTF-16/ISO-8859/Windows-1252 to UTF-8)
+- HTML emails now display correctly with proper formatting and special characters
 
 ---
 
 ## VERSION 1.2.0 - October 1, 2025
-
-**Service Management & Security**
-
-Added self-service installation from system tray menu and enhanced credential masking. Users can now install/remove the Windows Service without batch files, and sensitive Azure AD credentials are automatically masked in the UI.
-
-**Key Changes:**
-- Install/Remove Windows Service directly from tray menu
-- Credential masking for Tenant ID and Client ID (reveals on focus)
-- Dynamic tray menu based on service installation status
-- Improved error handling and user feedback
+- Added Install/Remove Windows Service directly from system tray menu
+- Automatic credential masking for Tenant ID and Client ID in configuration UI
 
 ---
 
-## VERSION 1.1.4 - October 1, 2025
-
-**Logging & UI Refinements**
-
-Enhanced application start logging with visual separators and confirmed all UI features are working correctly (smart Save button, intelligent Cancel/Close button, change tracking).
-
----
-
-## VERSION 1.1.3 - October 1, 2025
-
-**Enhanced Configuration UI**
-
-Improved configuration form with smart save button (disabled until changes made), intelligent Cancel/Close button, dedicated Exit Application button, comprehensive change tracking, and relocated "Show File Locations" to Application Settings tab.
-
----
-
-## VERSION 1.1.2 - October 1, 2025
-
-**🔴 CRITICAL FIX: Configuration Protection**
-
-Fixed configuration file being overwritten during builds by implementing build exclusions, automatic backups, and overwrite protection. Configuration now persists safely across builds.
-
----
-
-## VERSION 1.1.1 - October 1, 2025
-
-**Run Mode Improvements**
-
-Enhanced default run mode behavior with Console + Tray as default, improved logging, and better run mode source indication.
-
----
-
-## VERSION 1.1.0 - October 1, 2025
-
-**Configurable Run Modes & SMTP Protocol Fixes**
-
-Added configurable default run modes in Application Settings tab. Fixed critical UTF-8 BOM issue causing disconnections with strict SMTP clients (Veeam). Enhanced SMTP protocol support with STARTTLS advertisement and 8BITMIME extension.
+## VERSION 1.1.0 - 1.1.4 - October 1, 2025
+- Added configurable run modes (Service Mode, Console with Tray, Tray Only)
+- Enhanced configuration UI with smart save button and change tracking
+- Fixed UTF-8 BOM issue causing disconnections with strict SMTP clients (Veeam)
+- Configuration protection with automatic backups
+- Added STARTTLS advertisement and 8BITMIME extension support
 
 ---
 
 ## VERSION 1.0.0 - September 30, 2025
 
-**Initial Release**
+**Initial Release** - Custom SMTP relay service with Microsoft Graph API integration
 
-Custom SMTP server implementation with Microsoft Graph API integration. Receives emails via SMTP (port 25) and relays them through MS Graph using OAuth. Features include:
-
-- Custom SMTP server (no external libraries)
-- Microsoft Graph API integration with OAuth
+**Core Features:**
+- Custom SMTP server (port 25) with Microsoft Graph API relay
 - Email queue with automatic retry
 - DPAPI-encrypted configuration
 - Windows Service support
 - System tray GUI with configuration interface
-- Comprehensive logging with Serilog
-- Support for SMTP authentication (AUTH LOGIN/PLAIN)
-
-Compatible with Veeam, network printers, IoT devices, and legacy applications.
+- SMTP authentication (AUTH LOGIN/PLAIN)
+- Compatible with Veeam, network printers, IoT devices, and legacy applications
 
 ---
 

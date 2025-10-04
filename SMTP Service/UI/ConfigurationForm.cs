@@ -11,11 +11,22 @@ namespace SMTP_Service.UI
     {
         private readonly Managers.ConfigurationManager _configManager;
         private AppConfig _config;
+        private SmtpConfiguration _smtpConfig;
+        private UserConfiguration _userConfig;
+        private GraphConfiguration _graphConfig;
 
         // SMTP Settings Controls
         private TextBox txtSmtpPort = null!;
+        private ComboBox cmbBindAddress = null!;
         private CheckBox chkRequireAuth = null!;
         private NumericUpDown numMaxMessageSizeKb = null!;
+        
+        // Flow Control
+        private Button btnToggleFlow = null!;
+        private Label lblFlowStatus = null!;
+        private NumericUpDown numSendDelay = null!;
+        private bool _isFlowing = true;
+        private bool _isUiOnlyMode = false;
         private TextBox txtUsername = null!;
         private TextBox txtPassword = null!;
         private Button btnAddUser = null!;
@@ -37,6 +48,19 @@ namespace SMTP_Service.UI
         private TextBox txtLogLocation = null!;
         private Button btnBrowseLog = null!;
         private Button btnOpenLogs = null!;
+
+        // Update Settings Controls
+        private CheckBox chkAutoUpdateEnabled = null!;
+        private ComboBox cmbCheckFrequency = null!;
+        private DateTimePicker dtpCheckTime = null!;
+        private ComboBox cmbWeeklyCheckDay = null!;
+        private Label lblWeeklyDay = null!;
+        private CheckBox chkAutoDownload = null!;
+        private CheckBox chkAutoInstall = null!;
+        private CheckBox chkCheckOnStartup = null!;
+        private Label lblLastCheckDate = null!;
+        private Label lblLastUpdateDate = null!;
+        private Label lblLastInstalledVersion = null!;
 
         // Test Email Controls
         private TextBox txtTestTo = null!;
@@ -90,6 +114,9 @@ namespace SMTP_Service.UI
         {
             _configManager = new Managers.ConfigurationManager();
             _config = _configManager.LoadConfiguration();
+            _smtpConfig = _configManager.LoadSmtpConfiguration();
+            _userConfig = _configManager.LoadUserConfiguration();
+            _graphConfig = _configManager.LoadGraphConfiguration();
             
             // Initialize tooltip for stats
             _statsToolTip = new ToolTip
@@ -98,6 +125,9 @@ namespace SMTP_Service.UI
                 InitialDelay = 500,
                 ReshowDelay = 100
             };
+            
+            // Detect if running in UI-only mode
+            _isUiOnlyMode = ServiceMutexManager.IsServiceRunning();
             
             InitializeComponents();
             LoadConfiguration();
@@ -270,13 +300,98 @@ namespace SMTP_Service.UI
 
         private void InitializeSmtpTab(TabPage tab)
         {
+            // Enable scrolling for this tab
+            tab.AutoScroll = true;
+
             int y = 20;
+
+            // === FLOW CONTROL SECTION ===
+            var lblFlowHeader = new Label 
+            { 
+                Text = "SMTP Flow Control:", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblFlowHeader);
+
+            y += 30;
+
+            btnToggleFlow = new Button
+            {
+                Text = "Halt SMTP",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(120, 30)
+            };
+            btnToggleFlow.Click += BtnToggleFlow_Click;
+            tab.Controls.Add(btnToggleFlow);
+
+            lblFlowStatus = new Label
+            {
+                Text = "Status: FLOWING",
+                Location = new System.Drawing.Point(150, y + 5),
+                Size = new System.Drawing.Size(200, 20),
+                ForeColor = System.Drawing.Color.DarkGreen,
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblFlowStatus);
+
+            y += 40;
+
+            var lblSendDelay = new Label 
+            { 
+                Text = "Send Delay (ms):", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(120, 20) 
+            };
+            numSendDelay = new NumericUpDown
+            {
+                Location = new System.Drawing.Point(150, y),
+                Size = new System.Drawing.Size(100, 20),
+                Minimum = 100,
+                Maximum = 10000,
+                Value = 1000,
+                Increment = 100
+            };
+            tab.Controls.Add(lblSendDelay);
+            tab.Controls.Add(numSendDelay);
+
+            y += 30;
+
+            var lblFlowInfo = new Label
+            {
+                Text = "Flow Control: Halt stops accepting new SMTP connections. Messages are queued and sent when resumed.\n" +
+                       "Send Delay: Milliseconds to wait between each email send (prevents overwhelming recipients).",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(520, 40),
+                AutoSize = false,
+                ForeColor = System.Drawing.Color.DarkBlue
+            };
+            tab.Controls.Add(lblFlowInfo);
+
+            y += 50;
 
             // Port
             var lblPort = new Label { Text = "SMTP Port:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(100, 20) };
             txtSmtpPort = new TextBox { Location = new System.Drawing.Point(130, y), Size = new System.Drawing.Size(100, 20) };
             tab.Controls.Add(lblPort);
             tab.Controls.Add(txtSmtpPort);
+
+            y += 40;
+
+            // Bind Address
+            var lblBindAddress = new Label { Text = "Bind Address:", Location = new System.Drawing.Point(20, y), Size = new System.Drawing.Size(100, 20) };
+            cmbBindAddress = new ComboBox 
+            { 
+                Location = new System.Drawing.Point(130, y), 
+                Size = new System.Drawing.Size(300, 20),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cmbBindAddress.Items.Add("0.0.0.0 - All Interfaces (Default)");
+            cmbBindAddress.Items.Add("127.0.0.1 - Localhost Only");
+            cmbBindAddress.SelectedIndex = 0;
+            tab.Controls.Add(lblBindAddress);
+            tab.Controls.Add(cmbBindAddress);
 
             y += 40;
 
@@ -311,17 +426,21 @@ namespace SMTP_Service.UI
             // Info text
             var lblInfo = new Label
             {
-                Text = "Port Configuration:\n\n" +
-                       "Default SMTP port is 25 for standard SMTP relay.\n\n" +
+                Text = "Port Configuration:\n" +
+                       "• Default SMTP port is 25 for standard SMTP relay\n\n" +
+                       "Bind Address Configuration:\n" +
+                       "• 0.0.0.0 - Listen on ALL network interfaces (allows remote connections)\n" +
+                       "• 127.0.0.1 - Listen on localhost ONLY (local connections only, more secure)\n" +
+                       "• Requires service restart to take effect\n\n" +
                        "Message Size Limit:\n" +
                        "• Default is 50 MB. Range: 1 MB to 100 MB\n" +
                        "• Messages exceeding this limit will be rejected\n\n" +
                        "Authentication Modes:\n" +
                        "• When ENABLED: Authentication is REQUIRED - only authorized users can send emails\n" +
                        "• When DISABLED: Authentication is OPTIONAL - both authenticated and unauthenticated connections are allowed\n\n" +
-                       "Note: Configure authorized users in the Users tab. Changes require service restart.",
+                       "Note: Configure authorized users in the Users tab.",
                 Location = new System.Drawing.Point(20, y),
-                Size = new System.Drawing.Size(520, 200),
+                Size = new System.Drawing.Size(520, 240),
                 AutoSize = false,
                 ForeColor = System.Drawing.Color.DarkBlue
             };
@@ -330,6 +449,9 @@ namespace SMTP_Service.UI
 
         private void InitializeUsersTab(TabPage tab)
         {
+            // Enable scrolling for this tab
+            tab.AutoScroll = true;
+
             int y = 20;
 
             // Header
@@ -418,6 +540,9 @@ namespace SMTP_Service.UI
 
         private void InitializeGraphTab(TabPage tab)
         {
+            // Enable scrolling for this tab
+            tab.AutoScroll = true;
+
             int y = 20;
 
             // Tenant ID
@@ -560,6 +685,9 @@ namespace SMTP_Service.UI
 
         private void InitializeQueueTab(TabPage tab)
         {
+            // Enable scrolling for this tab
+            tab.AutoScroll = true;
+
             int y = 20;
 
             // Run Mode Section
@@ -717,10 +845,181 @@ namespace SMTP_Service.UI
             };
             btnOpenLogs.Click += BtnOpenLogs_Click;
             tab.Controls.Add(btnOpenLogs);
+
+            y += 50;
+
+            // Update Settings Section
+            var lblUpdateHeader = new Label 
+            { 
+                Text = "Auto-Update Settings:", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblUpdateHeader);
+
+            y += 30;
+
+            // Enable Auto-Update
+            chkAutoUpdateEnabled = new CheckBox 
+            { 
+                Text = "Enable Automatic Updates", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(200, 20) 
+            };
+            chkAutoUpdateEnabled.CheckedChanged += ChkAutoUpdateEnabled_CheckedChanged;
+            tab.Controls.Add(chkAutoUpdateEnabled);
+
+            y += 30;
+
+            // Check Frequency
+            var lblFrequency = new Label 
+            { 
+                Text = "Check Frequency:", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(150, 20) 
+            };
+            cmbCheckFrequency = new ComboBox 
+            { 
+                Location = new System.Drawing.Point(180, y), 
+                Size = new System.Drawing.Size(150, 20),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cmbCheckFrequency.Items.Add("Daily");
+            cmbCheckFrequency.Items.Add("Weekly");
+            cmbCheckFrequency.SelectedIndex = 0;
+            cmbCheckFrequency.SelectedIndexChanged += CmbCheckFrequency_SelectedIndexChanged;
+            tab.Controls.Add(lblFrequency);
+            tab.Controls.Add(cmbCheckFrequency);
+
+            y += 30;
+
+            // Check Time
+            var lblCheckTime = new Label 
+            { 
+                Text = "Check Time:", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(150, 20) 
+            };
+            dtpCheckTime = new DateTimePicker 
+            { 
+                Location = new System.Drawing.Point(180, y), 
+                Size = new System.Drawing.Size(150, 20),
+                Format = DateTimePickerFormat.Time,
+                ShowUpDown = true,
+                Value = DateTime.Today.AddHours(2) // Default to 2 AM
+            };
+            tab.Controls.Add(lblCheckTime);
+            tab.Controls.Add(dtpCheckTime);
+
+            y += 30;
+
+            // Weekly Check Day (initially hidden)
+            lblWeeklyDay = new Label 
+            { 
+                Text = "Check on Day:", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(150, 20),
+                Visible = false
+            };
+            cmbWeeklyCheckDay = new ComboBox 
+            { 
+                Location = new System.Drawing.Point(180, y), 
+                Size = new System.Drawing.Size(150, 20),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Visible = false
+            };
+            cmbWeeklyCheckDay.Items.AddRange(new object[] { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" });
+            cmbWeeklyCheckDay.SelectedIndex = 0;
+            tab.Controls.Add(lblWeeklyDay);
+            tab.Controls.Add(cmbWeeklyCheckDay);
+
+            y += 30;
+
+            // Auto Download
+            chkAutoDownload = new CheckBox 
+            { 
+                Text = "Automatically download updates", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(250, 20) 
+            };
+            chkAutoDownload.CheckedChanged += ChkAutoDownload_CheckedChanged;
+            tab.Controls.Add(chkAutoDownload);
+
+            y += 30;
+
+            // Auto Install
+            chkAutoInstall = new CheckBox 
+            { 
+                Text = "Automatically install updates (requires auto-download)", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(350, 20),
+                Enabled = false
+            };
+            tab.Controls.Add(chkAutoInstall);
+
+            y += 30;
+
+            // Check On Startup
+            chkCheckOnStartup = new CheckBox 
+            { 
+                Text = "Check for updates on startup", 
+                Location = new System.Drawing.Point(20, y), 
+                Size = new System.Drawing.Size(250, 20) 
+            };
+            tab.Controls.Add(chkCheckOnStartup);
+
+            y += 40;
+
+            // Update Status Info
+            var lblUpdateInfo = new Label
+            {
+                Text = "Update Status:",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(200, 20),
+                Font = new System.Drawing.Font(System.Drawing.SystemFonts.DefaultFont?.FontFamily ?? System.Drawing.FontFamily.GenericSansSerif, 9, System.Drawing.FontStyle.Bold)
+            };
+            tab.Controls.Add(lblUpdateInfo);
+
+            y += 25;
+
+            lblLastCheckDate = new Label
+            {
+                Text = "Last Check: Never",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                ForeColor = System.Drawing.Color.DarkBlue
+            };
+            tab.Controls.Add(lblLastCheckDate);
+
+            y += 25;
+
+            lblLastUpdateDate = new Label
+            {
+                Text = "Last Download: Never",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                ForeColor = System.Drawing.Color.DarkBlue
+            };
+            tab.Controls.Add(lblLastUpdateDate);
+
+            y += 25;
+
+            lblLastInstalledVersion = new Label
+            {
+                Text = "Last Installed Version: None",
+                Location = new System.Drawing.Point(20, y),
+                Size = new System.Drawing.Size(500, 20),
+                ForeColor = System.Drawing.Color.DarkBlue
+            };
+            tab.Controls.Add(lblLastInstalledVersion);
         }
 
         private void InitializeTestEmailTab(TabPage tab)
         {
+            // Enable scrolling for this tab
+            tab.AutoScroll = true;
+
             int y = 20;
 
             // Instructions
@@ -856,6 +1155,9 @@ namespace SMTP_Service.UI
 
         private void InitializeStatisticsTab(TabPage tab)
         {
+            // Enable scrolling for this tab
+            tab.AutoScroll = true;
+
             int y = 20;
 
             // Header
@@ -1606,24 +1908,36 @@ namespace SMTP_Service.UI
         private void LoadConfiguration()
         {
             // Load SMTP settings
-            txtSmtpPort.Text = _config.SmtpSettings.Port.ToString();
-            numMaxMessageSizeKb.Value = _config.SmtpSettings.MaxMessageSizeKb / 1024; // Convert KB to MB for display
-            chkRequireAuth.Checked = _config.SmtpSettings.RequireAuthentication;
+            txtSmtpPort.Text = _smtpConfig.Port.ToString();
+            
+            // Load bind address
+            if (_smtpConfig.BindAddress == "127.0.0.1")
+                cmbBindAddress.SelectedIndex = 1;
+            else
+                cmbBindAddress.SelectedIndex = 0; // Default to 0.0.0.0
+            
+            numMaxMessageSizeKb.Value = _smtpConfig.MaxMessageSizeKb / 1024; // Convert KB to MB for display
+            chkRequireAuth.Checked = _smtpConfig.RequireAuthentication;
+            
+            // Load flow control settings
+            _isFlowing = _smtpConfig.SmtpFlowEnabled;
+            numSendDelay.Value = _smtpConfig.SendDelayMs;
+            UpdateFlowUI();
             
             lstUsers.Items.Clear();
-            foreach (var cred in _config.SmtpSettings.Credentials)
+            foreach (var cred in _userConfig.Credentials)
             {
                 lstUsers.Items.Add(cred.Username);
             }
 
             // Load Graph settings - store actual values and display masked versions
-            _actualTenantId = _config.GraphSettings.TenantId;
-            _actualClientId = _config.GraphSettings.ClientId;
+            _actualTenantId = _graphConfig.TenantId;
+            _actualClientId = _graphConfig.ClientId;
             
-            txtTenantId.Text = MaskGuid(_config.GraphSettings.TenantId);
-            txtClientId.Text = MaskGuid(_config.GraphSettings.ClientId);
-            txtClientSecret.Text = _config.GraphSettings.ClientSecret;
-            txtSenderEmail.Text = _config.GraphSettings.SenderEmail;
+            txtTenantId.Text = MaskGuid(_graphConfig.TenantId);
+            txtClientId.Text = MaskGuid(_graphConfig.ClientId);
+            txtClientSecret.Text = _graphConfig.ClientSecret;
+            txtSenderEmail.Text = _graphConfig.SenderEmail;
 
             // Load Queue settings
             numMaxRetry.Value = _config.QueueSettings.MaxRetryAttempts;
@@ -1646,6 +1960,33 @@ namespace SMTP_Service.UI
             {
                 txtLogLocation.Text = logLocation;
             }
+
+            // Load Update Settings
+            chkAutoUpdateEnabled.Checked = _config.UpdateSettings.AutoUpdateEnabled;
+            cmbCheckFrequency.SelectedIndex = (int)_config.UpdateSettings.CheckFrequency - 1; // Enum starts at 1
+            dtpCheckTime.Value = DateTime.Today.Add(_config.UpdateSettings.CheckTime);
+            cmbWeeklyCheckDay.SelectedIndex = (int)_config.UpdateSettings.WeeklyCheckDay;
+            chkAutoDownload.Checked = _config.UpdateSettings.AutoDownload;
+            chkAutoInstall.Checked = _config.UpdateSettings.AutoInstall;
+            chkCheckOnStartup.Checked = _config.UpdateSettings.CheckOnStartup;
+            
+            // Update status labels
+            if (_config.UpdateSettings.LastCheckDate.HasValue)
+            {
+                lblLastCheckDate.Text = $"Last Check: {_config.UpdateSettings.LastCheckDate.Value:yyyy-MM-dd HH:mm:ss}";
+            }
+            if (_config.UpdateSettings.LastUpdateDate.HasValue)
+            {
+                lblLastUpdateDate.Text = $"Last Download: {_config.UpdateSettings.LastUpdateDate.Value:yyyy-MM-dd HH:mm:ss}";
+            }
+            if (!string.IsNullOrEmpty(_config.UpdateSettings.LastInstalledVersion))
+            {
+                lblLastInstalledVersion.Text = $"Last Installed Version: {_config.UpdateSettings.LastInstalledVersion}";
+            }
+            
+            // Set initial visibility and enabled states for update controls
+            CmbCheckFrequency_SelectedIndexChanged(null, EventArgs.Empty);
+            ChkAutoUpdateEnabled_CheckedChanged(null, EventArgs.Empty);
 
             // Wire up change tracking after loading initial values
             WireUpChangeTracking();
@@ -1710,10 +2051,12 @@ namespace SMTP_Service.UI
             // SMTP Settings
             txtSmtpPort.TextChanged += (s, e) => MarkAsChanged();
             txtSmtpPort.Leave += (s, e) => MarkAsChanged();
+            cmbBindAddress.SelectedIndexChanged += (s, e) => MarkAsChanged();
             numMaxMessageSizeKb.ValueChanged += (s, e) => MarkAsChanged();
             numMaxMessageSizeKb.Leave += (s, e) => MarkAsChanged();
             numMaxMessageSizeKb.KeyUp += (s, e) => MarkAsChanged();
             chkRequireAuth.CheckedChanged += (s, e) => MarkAsChanged();
+            numSendDelay.ValueChanged += (s, e) => MarkAsChanged();
             txtUsername.TextChanged += (s, e) => MarkAsChanged();
             txtUsername.Leave += (s, e) => MarkAsChanged();
             txtPassword.TextChanged += (s, e) => MarkAsChanged();
@@ -1741,6 +2084,13 @@ namespace SMTP_Service.UI
             cmbRunMode.SelectedIndexChanged += (s, e) => MarkAsChanged();
             txtLogLocation.TextChanged += (s, e) => MarkAsChanged();
             txtLogLocation.Leave += (s, e) => MarkAsChanged();
+
+            // Update Settings
+            // Note: chkAutoUpdateEnabled, chkAutoDownload, and cmbCheckFrequency already have custom handlers that call MarkAsChanged()
+            dtpCheckTime.ValueChanged += (s, e) => MarkAsChanged();
+            cmbWeeklyCheckDay.SelectedIndexChanged += (s, e) => MarkAsChanged();
+            chkAutoInstall.CheckedChanged += (s, e) => MarkAsChanged();
+            chkCheckOnStartup.CheckedChanged += (s, e) => MarkAsChanged();
         }
 
         private void MarkAsChanged()
@@ -1798,7 +2148,7 @@ namespace SMTP_Service.UI
                 return;
             }
 
-            _config.SmtpSettings.Credentials.Add(new SmtpCredential
+            _userConfig.Credentials.Add(new SmtpCredential
             {
                 Username = txtUsername.Text.Trim(),
                 Password = txtPassword.Text
@@ -1816,7 +2166,7 @@ namespace SMTP_Service.UI
             if (lstUsers.SelectedIndex >= 0)
             {
                 var username = lstUsers.SelectedItem?.ToString();
-                _config.SmtpSettings.Credentials.RemoveAll(c => c.Username == username);
+                _userConfig.Credentials.RemoveAll(c => c.Username == username);
                 lstUsers.Items.RemoveAt(lstUsers.SelectedIndex);
                 
                 MarkAsChanged();
@@ -1856,6 +2206,45 @@ namespace SMTP_Service.UI
             {
                 MessageBox.Show($"Error showing file paths: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void ChkAutoUpdateEnabled_CheckedChanged(object? sender, EventArgs e)
+        {
+            // Enable/disable all update-related controls based on main checkbox
+            var enabled = chkAutoUpdateEnabled.Checked;
+            cmbCheckFrequency.Enabled = enabled;
+            dtpCheckTime.Enabled = enabled;
+            cmbWeeklyCheckDay.Enabled = enabled && cmbCheckFrequency.SelectedIndex == 1;
+            lblWeeklyDay.Enabled = enabled && cmbCheckFrequency.SelectedIndex == 1;
+            chkAutoDownload.Enabled = enabled;
+            chkAutoInstall.Enabled = enabled && chkAutoDownload.Checked;
+            chkCheckOnStartup.Enabled = enabled;
+            
+            MarkAsChanged();
+        }
+
+        private void CmbCheckFrequency_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            // Show/hide weekly day selector based on frequency
+            var isWeekly = cmbCheckFrequency.SelectedIndex == 1; // 1 = Weekly
+            lblWeeklyDay.Visible = isWeekly;
+            cmbWeeklyCheckDay.Visible = isWeekly;
+            lblWeeklyDay.Enabled = isWeekly && chkAutoUpdateEnabled.Checked;
+            cmbWeeklyCheckDay.Enabled = isWeekly && chkAutoUpdateEnabled.Checked;
+            
+            MarkAsChanged();
+        }
+
+        private void ChkAutoDownload_CheckedChanged(object? sender, EventArgs e)
+        {
+            // Auto-install requires auto-download to be enabled
+            chkAutoInstall.Enabled = chkAutoDownload.Checked && chkAutoUpdateEnabled.Checked;
+            if (!chkAutoDownload.Checked)
+            {
+                chkAutoInstall.Checked = false;
+            }
+            
+            MarkAsChanged();
         }
 
         private void BtnRemoveService_Click(object? sender, EventArgs e)
@@ -2026,10 +2415,19 @@ namespace SMTP_Service.UI
                     return;
                 }
 
-                // Update configuration
-                _config.SmtpSettings.Port = port;
-                _config.SmtpSettings.MaxMessageSizeKb = (int)numMaxMessageSizeKb.Value * 1024; // Convert MB to KB for storage
-                _config.SmtpSettings.RequireAuthentication = chkRequireAuth.Checked;
+                // Determine bind address
+                string bindAddress = cmbBindAddress.SelectedIndex == 1 ? "127.0.0.1" : "0.0.0.0";
+
+                // Update SMTP configuration
+                _smtpConfig.Port = port;
+                _smtpConfig.MaxMessageSizeKb = (int)numMaxMessageSizeKb.Value * 1024; // Convert MB to KB for storage
+                _smtpConfig.RequireAuthentication = chkRequireAuth.Checked;
+                
+                // Save bind address
+                _smtpConfig.BindAddress = bindAddress;
+                
+                // Save flow control settings
+                _config.SmtpSettings.SendDelayMs = (int)numSendDelay.Value;
 
                 // Use actual values for Tenant ID and Client ID (not the masked display values)
                 // If actual values are empty but textbox has masked values, keep the original config values
@@ -2069,6 +2467,16 @@ namespace SMTP_Service.UI
 
                 _config.ApplicationSettings.RunMode = cmbRunMode.SelectedIndex;
                 _config.LogSettings.LogLocation = txtLogLocation.Text.Trim();
+
+                // Update Settings
+                _config.UpdateSettings.AutoUpdateEnabled = chkAutoUpdateEnabled.Checked;
+                _config.UpdateSettings.CheckFrequency = (UpdateCheckFrequency)(cmbCheckFrequency.SelectedIndex + 1); // Enum starts at 1
+                _config.UpdateSettings.CheckTime = dtpCheckTime.Value.TimeOfDay;
+                _config.UpdateSettings.WeeklyCheckDay = (DayOfWeek)cmbWeeklyCheckDay.SelectedIndex;
+                _config.UpdateSettings.AutoDownload = chkAutoDownload.Checked;
+                _config.UpdateSettings.AutoInstall = chkAutoInstall.Checked;
+                _config.UpdateSettings.CheckOnStartup = chkCheckOnStartup.Checked;
+                // Note: LastCheckDate, LastUpdateDate, and LastInstalledVersion are tracked automatically by the update service
 
                 // Save configuration
                 _configManager.SaveConfiguration(_config);
@@ -2119,7 +2527,7 @@ namespace SMTP_Service.UI
                     return;
                 }
 
-                var settings = new GraphSettings
+                var settings = new GraphConfiguration
                 {
                     TenantId = _actualTenantId,
                     ClientId = _actualClientId,
@@ -2411,10 +2819,10 @@ namespace SMTP_Service.UI
                 var logger = loggerFactory.CreateLogger<Services.GraphEmailService>();
 
                 // Create GraphEmailService with current settings
-                var graphSettings = new GraphSettings
+                var graphSettings = new GraphConfiguration
                 {
-                    TenantId = string.IsNullOrWhiteSpace(_actualTenantId) ? _config.GraphSettings.TenantId : _actualTenantId,
-                    ClientId = string.IsNullOrWhiteSpace(_actualClientId) ? _config.GraphSettings.ClientId : _actualClientId,
+                    TenantId = string.IsNullOrWhiteSpace(_actualTenantId) ? _graphConfig.TenantId : _actualTenantId,
+                    ClientId = string.IsNullOrWhiteSpace(_actualClientId) ? _graphConfig.ClientId : _actualClientId,
                     ClientSecret = txtClientSecret.Text.Trim(),
                     SenderEmail = txtSenderEmail.Text.Trim()
                 };
@@ -2615,6 +3023,73 @@ namespace SMTP_Service.UI
                 // Default
                 _ => "application/octet-stream"
             };
+        }
+        
+        private void BtnToggleFlow_Click(object? sender, EventArgs e)
+        {
+            if (_isUiOnlyMode)
+            {
+                // UI-only mode - send command via IPC
+                if (_isFlowing)
+                {
+                    if (ServiceCommandClient.TryHaltSmtp(out string error))
+                    {
+                        _isFlowing = false;
+                        UpdateFlowUI();
+                        MessageBox.Show("SMTP flow has been halted.\nNo new connections will be accepted.", 
+                            "SMTP Halted", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to halt SMTP:\n{error}", 
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                else
+                {
+                    if (ServiceCommandClient.TryResumeSmtp(out string error))
+                    {
+                        _isFlowing = true;
+                        UpdateFlowUI();
+                        MessageBox.Show("SMTP flow has been resumed.\nAccepting new connections.", 
+                            "SMTP Resumed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to resume SMTP:\n{error}", 
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+            else
+            {
+                // Direct access mode - toggle state and save
+                _isFlowing = !_isFlowing;
+                _config.SmtpSettings.SmtpFlowEnabled = _isFlowing;
+                _configManager.SaveConfiguration(_config);
+                UpdateFlowUI();
+                
+                var message = _isFlowing 
+                    ? "SMTP flow has been resumed.\nNote: You must restart the service for this to take effect."
+                    : "SMTP flow has been halted.\nNote: You must restart the service for this to take effect.";
+                MessageBox.Show(message, "Flow Control Updated", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void UpdateFlowUI()
+        {
+            if (_isFlowing)
+            {
+                btnToggleFlow.Text = "Halt SMTP";
+                lblFlowStatus.Text = "Status: FLOWING";
+                lblFlowStatus.ForeColor = System.Drawing.Color.DarkGreen;
+            }
+            else
+            {
+                btnToggleFlow.Text = "Resume SMTP";
+                lblFlowStatus.Text = "Status: HALTED";
+                lblFlowStatus.ForeColor = System.Drawing.Color.DarkRed;
+            }
         }
     }
 }

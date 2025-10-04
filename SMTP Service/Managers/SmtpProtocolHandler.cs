@@ -8,7 +8,8 @@ namespace SMTP_Service.Managers
     public class SmtpProtocolHandler
     {
         private readonly ILogger<SmtpProtocolHandler> _logger;
-        private readonly SmtpSettings _settings;
+        private readonly SmtpConfiguration _smtpConfig;
+        private readonly UserConfiguration _userConfig;
         private readonly string _clientIp;
 
         private string _clientHostname = string.Empty;
@@ -20,10 +21,11 @@ namespace SMTP_Service.Managers
         private bool _inDataMode = false;
         private EmailMessage? _lastParsedEmail = null;
 
-        public SmtpProtocolHandler(ILogger<SmtpProtocolHandler> logger, SmtpSettings settings, string clientIp)
+        public SmtpProtocolHandler(ILogger<SmtpProtocolHandler> logger, SmtpConfiguration smtpConfig, UserConfiguration userConfig, string clientIp)
         {
             _logger = logger;
-            _settings = settings;
+            _smtpConfig = smtpConfig;
+            _userConfig = userConfig;
             _clientIp = clientIp;
         }
 
@@ -83,11 +85,11 @@ namespace SMTP_Service.Managers
             
             // Always advertise AUTH if there are credentials configured
             // Whether it's required or optional is enforced in HandleMail
-            if (_settings.Credentials.Count > 0)
+            if (_userConfig.Credentials.Count > 0)
             {
                 response.AppendLine("250-AUTH LOGIN PLAIN");
             }
-            response.AppendLine($"250-SIZE {_settings.MaxMessageSizeKb * 1024}");
+            response.AppendLine($"250-SIZE {_smtpConfig.MaxMessageSizeKb * 1024}");
             response.AppendLine("250-8BITMIME");
             response.Append("250 HELP");
             
@@ -201,9 +203,9 @@ namespace SMTP_Service.Managers
         private bool ValidateCredentials(string username, string password)
         {
             _logger.LogInformation($"Validating credentials for username: '{username}'");
-            _logger.LogInformation($"Total credentials configured: {_settings.Credentials.Count}");
+            _logger.LogInformation($"Total credentials configured: {_userConfig.Credentials.Count}");
             
-            foreach (var cred in _settings.Credentials)
+            foreach (var cred in _userConfig.Credentials)
             {
                 _logger.LogInformation($"Checking against stored user: '{cred.Username}'");
                 if (cred.Username.Equals(username, StringComparison.OrdinalIgnoreCase))
@@ -230,27 +232,27 @@ namespace SMTP_Service.Managers
         private string HandleMail(string args)
         {
             _logger.LogInformation($"=== MAIL FROM PROCESSING ===");
-            _logger.LogInformation($"RequireAuthentication setting: {_settings.RequireAuthentication}");
+            _logger.LogInformation($"RequireAuthentication setting: {_smtpConfig.RequireAuthentication}");
             _logger.LogInformation($"IsAuthenticated status: {_isAuthenticated}");
             _logger.LogInformation($"AuthenticatedUser: '{_authenticatedUser}'");
             
-            if (_settings.RequireAuthentication && !_isAuthenticated)
+            if (_smtpConfig.RequireAuthentication && !_isAuthenticated)
             {
                 _logger.LogWarning($"REJECTING: Authentication is REQUIRED and client is NOT authenticated");
                 return "530 Authentication required";
             }
             
-            if (_settings.RequireAuthentication && _isAuthenticated)
+            if (_smtpConfig.RequireAuthentication && _isAuthenticated)
             {
                 _logger.LogInformation($"ALLOWING: Authentication is REQUIRED and client IS authenticated as '{_authenticatedUser}'");
             }
             
-            if (!_settings.RequireAuthentication && _isAuthenticated)
+            if (!_smtpConfig.RequireAuthentication && _isAuthenticated)
             {
                 _logger.LogInformation($"ALLOWING: Authentication is OPTIONAL and client IS authenticated as '{_authenticatedUser}'");
             }
             
-            if (!_settings.RequireAuthentication && !_isAuthenticated)
+            if (!_smtpConfig.RequireAuthentication && !_isAuthenticated)
             {
                 _logger.LogInformation($"ALLOWING: Authentication is OPTIONAL and client is NOT authenticated");
             }

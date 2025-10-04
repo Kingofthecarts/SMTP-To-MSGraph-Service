@@ -1,0 +1,16 @@
+# Build outputs
+bin/
+obj/
+
+# Runtime generated folders
+logs/
+stats/
+
+# Configuration backups
+config/*.backup
+
+# IDE user settings
+*.csproj.user
+
+# Publish profiles
+Properties/PublishProfiles/

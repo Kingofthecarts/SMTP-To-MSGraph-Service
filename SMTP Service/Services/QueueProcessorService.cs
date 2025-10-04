@@ -1,4 +1,5 @@
 using SMTP_Service.Managers;
+using SMTP_Service.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -10,17 +11,20 @@ namespace SMTP_Service.Services
         private readonly QueueManager _queueManager;
         private readonly GraphEmailService _graphService;
         private readonly StatisticsManager _statsManager;
+        private readonly SmtpConfiguration _smtpConfig;
 
         public QueueProcessorService(
             ILogger<QueueProcessorService> logger,
             QueueManager queueManager,
             GraphEmailService graphService,
-            StatisticsManager statsManager)
+            StatisticsManager statsManager,
+            SmtpConfiguration smtpConfig)
         {
             _logger = logger;
             _queueManager = queueManager;
             _graphService = graphService;
             _statsManager = statsManager;
+            _smtpConfig = smtpConfig;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -45,6 +49,13 @@ namespace SMTP_Service.Services
                             _queueManager.MarkAsSent(item.Id);
                             _logger.LogInformation($"Email sent successfully, recording stats for user: '{item.Message.AuthenticatedUser}'" );
                             _statsManager.RecordSuccess(item.Message.AuthenticatedUser);
+                            
+                            // Apply send delay if configured (flow control)
+                            if (_smtpConfig.SendDelayMs > 0)
+                            {
+                                _logger.LogDebug($"Applying send delay of {_smtpConfig.SendDelayMs}ms before processing next message");
+                                await Task.Delay(_smtpConfig.SendDelayMs, stoppingToken);
+                            }
                         }
                         else
                         {

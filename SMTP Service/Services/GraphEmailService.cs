@@ -15,13 +15,13 @@ namespace SMTP_Service.Services
     public class GraphEmailService
     {
         private readonly ILogger<GraphEmailService> _logger;
-        private readonly GraphSettings _settings;
+        private GraphConfiguration _graphConfig; // Not readonly since we need to update it
         private GraphServiceClient? _graphClient;
 
-        public GraphEmailService(ILogger<GraphEmailService> logger, GraphSettings settings)
+        public GraphEmailService(ILogger<GraphEmailService> logger, GraphConfiguration graphConfig)
         {
             _logger = logger;
-            _settings = settings;
+            _graphConfig = graphConfig;
             InitializeGraphClient();
         }
 
@@ -29,12 +29,12 @@ namespace SMTP_Service.Services
         {
             try
             {
-                _logger.LogInformation($"Initializing Graph client with Tenant: {_settings.TenantId}");
+                _logger.LogInformation($"Initializing Graph client with Tenant: {_graphConfig.TenantId}");
                 
                 var clientSecretCredential = new ClientSecretCredential(
-                    _settings.TenantId,
-                    _settings.ClientId,
-                    _settings.ClientSecret
+                    _graphConfig.TenantId,
+                    _graphConfig.ClientId,
+                    _graphConfig.ClientSecret
                 );
 
                 _graphClient = new GraphServiceClient(clientSecretCredential);
@@ -134,7 +134,7 @@ namespace SMTP_Service.Services
                 {
                     EmailAddress = new GraphEmailAddress
                     {
-                        Address = string.IsNullOrEmpty(email.From) ? _settings.SenderEmail : email.From
+                        Address = string.IsNullOrEmpty(email.From) ? _graphConfig.SenderEmail : email.From
                     }
                 };
 
@@ -174,7 +174,7 @@ namespace SMTP_Service.Services
                 };
 
                 // Send the email using the configured sender account
-                await _graphClient.Users[_settings.SenderEmail].SendMail.PostAsync(requestBody);
+                await _graphClient.Users[_graphConfig.SenderEmail].SendMail.PostAsync(requestBody);
 
                 _logger.LogInformation($"Email sent via Graph API: From={email.From}, To={string.Join(", ", email.To)}, Subject={email.Subject}, Attachments={email.Attachments.Count}");
                 return true;
@@ -197,10 +197,10 @@ namespace SMTP_Service.Services
 
             try
             {
-                _logger.LogInformation($"Testing Graph API connection for user: {_settings.SenderEmail}");
+                _logger.LogInformation($"Testing Graph API connection for user: {_graphConfig.SenderEmail}");
                 
                 // Try to get user information to verify connection
-                var user = await _graphClient.Users[_settings.SenderEmail].GetAsync();
+                var user = await _graphClient.Users[_graphConfig.SenderEmail].GetAsync();
                 
                 _logger.LogInformation($"Graph API connection test successful. User: {user?.Mail}, DisplayName: {user?.DisplayName}");
                 return true;
@@ -208,8 +208,8 @@ namespace SMTP_Service.Services
             catch (Azure.Identity.AuthenticationFailedException ex)
             {
                 _logger.LogError(ex, $"Authentication failed: {ex.Message}");
-                _logger.LogError($"Tenant ID used: {_settings.TenantId}");
-                _logger.LogError($"Client ID used: {_settings.ClientId}");
+                _logger.LogError($"Tenant ID used: {_graphConfig.TenantId}");
+                _logger.LogError($"Client ID used: {_graphConfig.ClientId}");
                 
                 // Check for specific error codes
                 if (ex.Message.Contains("AADSTS7000215") || ex.Message.Contains("Invalid client secret"))
@@ -235,7 +235,7 @@ namespace SMTP_Service.Services
             {
                 _logger.LogError(ex, $"Graph API OData error: {ex.Error?.Message}");
                 _logger.LogError($"Error code: {ex.Error?.Code}");
-                _logger.LogError($"Sender email: {_settings.SenderEmail}");
+                _logger.LogError($"Sender email: {_graphConfig.SenderEmail}");
                 return false;
             }
             catch (Exception ex)
@@ -246,14 +246,19 @@ namespace SMTP_Service.Services
             }
         }
 
-        public void UpdateSettings(GraphSettings newSettings)
+        public void UpdateSettings(GraphConfiguration newGraphConfig)
         {
-            if (_settings.TenantId != newSettings.TenantId ||
-                _settings.ClientId != newSettings.ClientId ||
-                _settings.ClientSecret != newSettings.ClientSecret)
+            if (_graphConfig.TenantId != newGraphConfig.TenantId ||
+                _graphConfig.ClientId != newGraphConfig.ClientId ||
+                _graphConfig.ClientSecret != newGraphConfig.ClientSecret)
             {
                 // Credentials changed, reinitialize
+                _graphConfig = newGraphConfig;
                 InitializeGraphClient();
+            }
+            else
+            {
+                _graphConfig = newGraphConfig;
             }
         }
     }

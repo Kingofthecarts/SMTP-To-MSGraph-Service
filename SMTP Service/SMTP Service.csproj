@@ -7,9 +7,9 @@
     <UserSecretsId>dotnet-SMTP_Service-e7879f41-b88e-40fa-8b6b-2fe0828c3265</UserSecretsId>
     <RootNamespace>SMTP_Service</RootNamespace>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>3.4.0</Version>
-    <AssemblyVersion>3.4.0</AssemblyVersion>
-    <FileVersion>3.4.0</FileVersion>
+    <Version>4.0.0</Version>
+    <AssemblyVersion>4.0.0</AssemblyVersion>
+    <FileVersion>4.0.0</FileVersion>
     <Product>SMTP to MS Graph Relay Service</Product>
     <Description>SMTP relay service that forwards emails to Microsoft 365 via MS Graph API</Description>
     <Company>Dores</Company>
@@ -25,12 +25,16 @@
   <ItemGroup>
     <Compile Remove="config\**" />
     <Compile Remove="logs\**" />
+    <Compile Remove="Properties\**" />
     <Content Remove="config\**" />
     <Content Remove="logs\**" />
+    <Content Remove="Properties\**" />
     <EmbeddedResource Remove="config\**" />
     <EmbeddedResource Remove="logs\**" />
+    <EmbeddedResource Remove="Properties\**" />
     <None Remove="config\**" />
     <None Remove="logs\**" />
+    <None Remove="Properties\**" />
   </ItemGroup>
 
   <!-- Explicitly include template as documentation only (never copy) -->
@@ -40,6 +44,12 @@
     <None Remove="Setup-GitHubToken.ps1" />
     <None Remove="Test-GitHubConfig.ps1" />
     <None Remove="docs\**" />
+    <_WebToolingArtifacts Remove="Properties\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="appsettings.Development.json" />
+    <Content Remove="appsettings.json" />
   </ItemGroup>
 
   <ItemGroup>

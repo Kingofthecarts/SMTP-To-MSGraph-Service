@@ -52,11 +52,14 @@ namespace SMTP_Service.UI
             }
             
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
+            var flowControlMenuItem = new ToolStripMenuItem("Halt SMTP Flow", null, ToggleFlowControl);
+            flowControlMenuItem.Name = "flowControl"; // Name it so we can find it later
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
             var updateMenuItem = new ToolStripMenuItem("Check for Updates", null, CheckForUpdates);
 
             _contextMenu.Items.Add(configMenuItem);
+            _contextMenu.Items.Add(flowControlMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
             _contextMenu.Items.Add(updateMenuItem);
@@ -426,11 +429,14 @@ namespace SMTP_Service.UI
             
             // Rebuild the menu with updated service status
             var configMenuItem = new ToolStripMenuItem("Configuration", null, ShowConfiguration);
+            var flowControlMenuItem = new ToolStripMenuItem("Halt SMTP Flow", null, ToggleFlowControl);
+            flowControlMenuItem.Name = "flowControl"; // Name it so we can find it later
             var statusMenuItem = new ToolStripMenuItem("Service Status", null, ShowStatus);
             var logsMenuItem = new ToolStripMenuItem("View Logs", null, ViewLogs);
             var updateMenuItem = new ToolStripMenuItem("Check for Updates", null, CheckForUpdates);
 
             _contextMenu.Items.Add(configMenuItem);
+            _contextMenu.Items.Add(flowControlMenuItem);
             _contextMenu.Items.Add(statusMenuItem);
             _contextMenu.Items.Add(logsMenuItem);
             _contextMenu.Items.Add(updateMenuItem);
@@ -679,6 +685,97 @@ namespace SMTP_Service.UI
                     "Update Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+            }
+        }
+
+        private void ToggleFlowControl(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Get current flow status
+                if (Helpers.ServiceCommandClient.TryGetStatus(out bool isFlowing, out string error))
+                {
+                    // Toggle the flow
+                    if (isFlowing)
+                    {
+                        if (Helpers.ServiceCommandClient.TryHaltSmtp(out error))
+                        {
+                            MessageBox.Show(
+                                "SMTP flow has been halted.\n\n" +
+                                "The server will no longer accept new SMTP connections.\n" +
+                                "Messages will queue until flow is resumed.",
+                                "SMTP Halted",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information);
+                            
+                            // Update menu item text
+                            UpdateFlowControlMenuItem(false);
+                        }
+                        else
+                        {
+                            MessageBox.Show(
+                                $"Failed to halt SMTP flow:\n{error}",
+                                "Error",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    }
+                    else
+                    {
+                        if (Helpers.ServiceCommandClient.TryResumeSmtp(out error))
+                        {
+                            MessageBox.Show(
+                                "SMTP flow has been resumed.\n\n" +
+                                "The server is now accepting new SMTP connections.\n" +
+                                "Queued messages will be processed.",
+                                "SMTP Resumed",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information);
+                            
+                            // Update menu item text
+                            UpdateFlowControlMenuItem(true);
+                        }
+                        else
+                        {
+                            MessageBox.Show(
+                                $"Failed to resume SMTP flow:\n{error}",
+                                "Error",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    }
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "Unable to communicate with the SMTP service.\n\n" +
+                        "Make sure the service is running and try again.",
+                        "Service Not Available",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error toggling flow control");
+                MessageBox.Show(
+                    $"Error controlling SMTP flow:\n{ex.Message}",
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void UpdateFlowControlMenuItem(bool isFlowing)
+        {
+            // Find the flow control menu item and update its text
+            foreach (ToolStripItem item in _contextMenu.Items)
+            {
+                if (item is ToolStripMenuItem menuItem && menuItem.Name == "flowControl")
+                {
+                    menuItem.Text = isFlowing ? "Halt SMTP Flow" : "Resume SMTP Flow";
+                    break;
+                }
             }
         }
 

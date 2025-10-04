@@ -3,39 +3,17 @@ namespace SMTP_Service.Models
     public class AppConfig
     {
         public ApplicationSettings ApplicationSettings { get; set; } = new();
-        public SmtpSettings SmtpSettings { get; set; } = new();
-        public GraphSettings GraphSettings { get; set; } = new();
         public QueueSettings QueueSettings { get; set; } = new();
         public LogSettings LogSettings { get; set; } = new();
+        public UpdateSettings UpdateSettings { get; set; } = new();
+        public SmtpConfiguration SmtpSettings { get; set; } = new();
+        public GraphConfiguration GraphSettings { get; set; } = new();
     }
 
     public class ApplicationSettings
     {
         // 0 = Service/Console mode, 1 = Console with Tray (DEFAULT), 2 = Tray only
         public int RunMode { get; set; } = 1;
-    }
-
-    public class SmtpSettings
-    {
-        public int Port { get; set; } = 25;
-        public bool RequireAuthentication { get; set; } = true;
-        public List<SmtpCredential> Credentials { get; set; } = new();
-        public int MaxMessageSizeKb { get; set; } = 51200; // 50MB default
-        public bool EnableTls { get; set; } = false;
-    }
-
-    public class SmtpCredential
-    {
-        public string Username { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty; // Will be encrypted in storage
-    }
-
-    public class GraphSettings
-    {
-        public string TenantId { get; set; } = string.Empty;
-        public string ClientId { get; set; } = string.Empty;
-        public string ClientSecret { get; set; } = string.Empty; // Will be encrypted
-        public string SenderEmail { get; set; } = string.Empty;
     }
 
     public class QueueSettings
@@ -49,5 +27,30 @@ namespace SMTP_Service.Models
     {
         public string LogLevel { get; set; } = "Information";
         public string LogLocation { get; set; } = "logs";
+    }
+
+    public class UpdateSettings
+    {
+        // Schedule Settings
+        public bool AutoUpdateEnabled { get; set; } = false;
+        public UpdateCheckFrequency CheckFrequency { get; set; } = UpdateCheckFrequency.Daily;
+        public TimeSpan CheckTime { get; set; } = new TimeSpan(2, 0, 0); // 2 AM default
+        public DayOfWeek WeeklyCheckDay { get; set; } = DayOfWeek.Sunday; // For weekly checks
+        
+        // Behavior Settings
+        public bool AutoDownload { get; set; } = false;
+        public bool AutoInstall { get; set; } = false; // Only enabled if AutoDownload is true
+        public bool CheckOnStartup { get; set; } = true;
+        
+        // Tracking
+        public DateTime? LastCheckDate { get; set; }
+        public DateTime? LastUpdateDate { get; set; }
+        public string? LastInstalledVersion { get; set; }
+    }
+
+    public enum UpdateCheckFrequency
+    {
+        Daily = 1,
+        Weekly = 2
     }
 }

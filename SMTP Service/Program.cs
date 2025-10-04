@@ -2,6 +2,8 @@ using SMTP_Service;
 using SMTP_Service.Services;
 using SMTP_Service.UI;
 using SMTP_Service.Helpers;
+using SMTP_Service.Models;
+using EmailService.Flow;
 using Serilog;
 using System.Windows.Forms;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -137,6 +139,12 @@ if (runAsTray)
 bool showTray = runAsConsoleWithTray || runAsTray; // Mode 1 or Mode 2
 bool isMode0 = !runAsTray && !runAsConsoleWithTray; // Pure service mode
 
+// Check for downloaded updates on startup (only if showing UI)
+if (showTray)
+{
+    UpdateCheckHelper.CheckForDownloadedUpdates();
+}
+
 if (showTray)
 {
     if (runAsConsoleWithTray)
@@ -169,13 +177,22 @@ Console.WriteLine("============================================\n");
 // Initialize Configuration Manager
 var configManager = new SMTP_Service.Managers.ConfigurationManager();
 var config = configManager.LoadConfiguration();
+var smtpConfig = configManager.LoadSmtpConfiguration();
+var userConfig = configManager.LoadUserConfiguration();
+var graphConfig = configManager.LoadGraphConfiguration();
+
+// Initialize flow control with saved settings
+var flowControl = SmtpFlowControl.Instance;
+Log.Information($"Flow control initialized - Status: {(flowControl.IsFlowEnabled ? "RUNNING" : "HALTED")}");
+Log.Information($"Bind Address: {smtpConfig.BindAddress}");
+Log.Information($"Send Delay: {smtpConfig.SendDelayMs}ms");
 
 try
 {
     Console.WriteLine("Configuring services...");
-    Log.Information($"SMTP Port: {config.SmtpSettings.Port}");
-    Log.Information($"Authentication Required: {config.SmtpSettings.RequireAuthentication}");
-    Log.Information($"Configured Users: {config.SmtpSettings.Credentials.Count}");
+    Log.Information($"SMTP Port: {smtpConfig.Port}");
+    Log.Information($"Authentication Required: {smtpConfig.RequireAuthentication}");
+    Log.Information($"Configured Users: {userConfig.Credentials.Count}");
     
     // Acquire service mutex (marks this as the service instance)
     var serviceMutex = new ServiceMutexManager();
@@ -199,10 +216,11 @@ try
         {
             Console.WriteLine("Configuring services...");
             
-            // Register configuration
+            // Register all configurations
             services.AddSingleton(config);
-            services.AddSingleton(config.SmtpSettings);
-            services.AddSingleton(config.GraphSettings);
+            services.AddSingleton(smtpConfig);
+            services.AddSingleton(userConfig);
+            services.AddSingleton(graphConfig);
             services.AddSingleton(config.QueueSettings);
             services.AddSingleton(configManager);
 
@@ -215,6 +233,8 @@ try
             // Register background services
             services.AddHostedService<Worker>();
             services.AddHostedService<QueueProcessorService>();
+            services.AddHostedService<ScheduledUpdateService>();
+            services.AddHostedService<CommandListenerService>(); // IPC for UI-only mode
             
             Console.WriteLine("Services configured");
         });

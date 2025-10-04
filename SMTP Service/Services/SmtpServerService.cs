@@ -10,20 +10,66 @@ namespace SMTP_Service.Services
     public class SmtpServerService
     {
         private readonly ILogger<SmtpServerService> _logger;
-        private readonly SmtpSettings _settings;
+        private readonly SmtpConfiguration _smtpConfig;
+        private readonly UserConfiguration _userConfig;
         private readonly QueueManager _queueManager;
         private TcpListener? _listener;
         private CancellationTokenSource? _cancellationTokenSource;
         private bool _isRunning = false;
+        private volatile bool _smtpFlowEnabled = true;
 
         public SmtpServerService(
             ILogger<SmtpServerService> logger, 
-            SmtpSettings settings,
+            SmtpConfiguration smtpConfig,
+            UserConfiguration userConfig,
             QueueManager queueManager)
         {
             _logger = logger;
-            _settings = settings;
+            _smtpConfig = smtpConfig;
+            _userConfig = userConfig;
             _queueManager = queueManager;
+            _smtpFlowEnabled = smtpConfig.SmtpFlowEnabled; // Initialize from config
+        }
+
+        /// <summary>
+        /// Gets whether SMTP flow is currently enabled
+        /// </summary>
+        public bool IsSmtpFlowEnabled => _smtpFlowEnabled;
+
+        /// <summary>
+        /// Halt SMTP flow - stop accepting new connections
+        /// </summary>
+        public void HaltSmtpFlow()
+        {
+            _smtpFlowEnabled = false;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine();
+            Console.WriteLine("═══════════════════════════════════════");
+            Console.WriteLine("⛔ HALT SMTP");
+            Console.WriteLine("Inbound connections blocked");
+            Console.WriteLine("Messages will queue until resumed");
+            Console.WriteLine("═══════════════════════════════════════");
+            Console.WriteLine();
+            Console.ResetColor();
+            _logger.LogWarning("SMTP Flow HALTED - No longer accepting inbound connections");
+        }
+
+        /// <summary>
+        /// Resume SMTP flow - start accepting connections again
+        /// </summary>
+        public void ResumeSmtpFlow()
+        {
+            _smtpFlowEnabled = true;
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine();
+            Console.WriteLine("═══════════════════════════════════════");
+            Console.WriteLine("✅ FLOW SMTP");
+            Console.WriteLine("Accepting inbound connections");
+            Console.WriteLine("Queued messages will be processed");
+            Console.WriteLine("═══════════════════════════════════════");
+            Console.WriteLine();
+            Console.ResetColor();
+            _logger.LogInformation("SMTP Flow RESUMED - Accepting inbound connections");
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
@@ -37,23 +83,33 @@ namespace SMTP_Service.Services
             try
             {
                 _logger.LogInformation($"=== SMTP Server Configuration ===");
-                _logger.LogInformation($"Port: {_settings.Port}");
-                _logger.LogInformation($"Require Authentication: {_settings.RequireAuthentication}");
-                _logger.LogInformation($"Configured Users: {_settings.Credentials.Count}");
-                foreach (var cred in _settings.Credentials)
+                _logger.LogInformation($"Port: {_smtpConfig.Port}");
+                _logger.LogInformation($"Bind Address: {_smtpConfig.BindAddress}");
+                _logger.LogInformation($"Require Authentication: {_smtpConfig.RequireAuthentication}");
+                _logger.LogInformation($"Configured Users: {_userConfig.Credentials.Count}");
+                foreach (var cred in _userConfig.Credentials)
                 {
                     _logger.LogInformation($"  - User: {cred.Username}");
                 }
                 _logger.LogInformation($"=================================");
                 
-                _logger.LogInformation($"Attempting to start SMTP server on port {_settings.Port}...");
-                _listener = new TcpListener(IPAddress.Any, _settings.Port);
+                _logger.LogInformation($"Attempting to start SMTP server on {_smtpConfig.BindAddress}:{_smtpConfig.Port}...");
+                
+                // Parse and validate bind address
+                IPAddress bindAddress;
+                if (!IPAddress.TryParse(_smtpConfig.BindAddress, out bindAddress!))
+                {
+                    _logger.LogWarning($"Invalid bind address '{_smtpConfig.BindAddress}', defaulting to 0.0.0.0");
+                    bindAddress = IPAddress.Any;
+                }
+                
+                _listener = new TcpListener(bindAddress, _smtpConfig.Port);
                 _listener.Start();
                 _isRunning = true;
                 _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-                _logger.LogInformation($"SMTP server successfully started and listening on port {_settings.Port}");
-                _logger.LogInformation($"Server is ready to accept connections on 0.0.0.0:{_settings.Port}");
+                _logger.LogInformation($"SMTP server successfully started and listening on {_smtpConfig.BindAddress}:{_smtpConfig.Port}");
+                _logger.LogInformation($"Server is ready to accept connections");
 
                 while (!_cancellationTokenSource.Token.IsCancellationRequested)
                 {
@@ -79,7 +135,7 @@ namespace SMTP_Service.Services
             }
             catch (System.Net.Sockets.SocketException ex)
             {
-                _logger.LogError($"Failed to bind to port {_settings.Port}: {ex.Message}");
+                _logger.LogError($"Failed to bind to port {_smtpConfig.Port}: {ex.Message}");
                 _logger.LogError($"Error Code: {ex.SocketErrorCode}");
                 if (ex.SocketErrorCode == System.Net.Sockets.SocketError.AccessDenied)
                 {
@@ -141,9 +197,22 @@ namespace SMTP_Service.Services
                     Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Socket configured: ReceiveTimeout=30s, SendTimeout=30s");
                     Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] Creating protocol handler...");
                     
+                    // Check if SMTP flow is enabled
+                    if (!_smtpFlowEnabled)
+                    {
+                        Console.WriteLine($"[SMTP] [{DateTime.Now:HH:mm:ss.fff}] ⛔ FLOW HALTED - Rejecting connection");
+                        _logger.LogWarning($"Connection from {clientEndpoint} rejected - SMTP flow is halted");
+                        
+                        // Send 421 Service not available response and close
+                        await writer.WriteLineAsync("421 Service not available, closing transmission channel");
+                        await writer.FlushAsync();
+                        return;
+                    }
+                    
                     var handler = new SmtpProtocolHandler(
                         SmtpLoggerFactory.Factory.CreateLogger<SmtpProtocolHandler>(),
-                        _settings,
+                        _smtpConfig,
+                        _userConfig,
                         clientIp
                     );
 

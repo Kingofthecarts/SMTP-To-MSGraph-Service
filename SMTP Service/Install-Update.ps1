@@ -8,8 +8,69 @@ param(
 $RootPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $UpdatesFolder = Join-Path $RootPath "updates"
 
+# ============================================
+# Read Configuration for Auto-Install Mode
+# ============================================
+function Get-AutoInstallSettings {
+    $configPath = Join-Path $RootPath "config\smtp-config.json"
+    
+    if (Test-Path $configPath) {
+        try {
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            
+            $autoDownload = $false
+            $autoInstall = $false
+            
+            # Safely read the settings
+            if ($config.PSObject.Properties.Name -contains "UpdateSettings") {
+                if ($config.UpdateSettings.PSObject.Properties.Name -contains "AutoDownload") {
+                    $autoDownload = $config.UpdateSettings.AutoDownload
+                }
+                if ($config.UpdateSettings.PSObject.Properties.Name -contains "AutoInstall") {
+                    $autoInstall = $config.UpdateSettings.AutoInstall
+                }
+            }
+            
+            return @{
+                AutoDownload = $autoDownload
+                AutoInstall = $autoInstall
+                IsFullyAutomatic = ($autoDownload -and $autoInstall)
+            }
+        } catch {
+            Write-Warning "Could not read auto-install settings from config: $_"
+            return @{
+                AutoDownload = $false
+                AutoInstall = $false
+                IsFullyAutomatic = $false
+            }
+        }
+    }
+    
+    return @{
+        AutoDownload = $false
+        AutoInstall = $false
+        IsFullyAutomatic = $false
+    }
+}
+
+# Check if running in fully automatic mode
+$autoSettings = Get-AutoInstallSettings
+$isFullyAutomatic = $autoSettings.IsFullyAutomatic
+
 # Files and folders to exclude from replacement
-$ExcludedFiles = @("smtp-config.json")
+$ExcludedFiles = @(
+    "smtp-config.json",
+    "smtp-config.json.backup",
+    "smtp-config.json.pre-migration.backup",
+    "smtp.json",
+    "smtp.json.backup",
+    "user.json",
+    "user.json.backup",
+    "graph.json",
+    "graph.json.backup",
+    "git.json",
+    "git.json.backup"
+)
 $ExcludedFolders = @("logs", "stats", "updates", "backup")
 
 # Track if service was running
@@ -167,6 +228,244 @@ function Stop-SmtpService {
     }
 }
 
+# Function to get current installed version
+function Get-CurrentVersion {
+    $versionFile = Join-Path $RootPath "version.txt"
+    
+    if (Test-Path $versionFile) {
+        $versionContent = Get-Content $versionFile -Raw
+        $versionContent = $versionContent.Trim()
+        Write-Log "[VERSION] Current version from version.txt: $versionContent"
+        return $versionContent
+    }
+    
+    # Fallback: Try to get version from exe
+    $exePath = Join-Path $RootPath "SMTP Service.exe"
+    if (Test-Path $exePath) {
+        try {
+            $versionInfo = (Get-Item $exePath).VersionInfo
+            $version = "$($versionInfo.FileMajorPart).$($versionInfo.FileMinorPart).$($versionInfo.FileBuildPart)"
+            Write-Log "[VERSION] Current version from exe: $version"
+            return $version
+        }
+        catch {
+            Write-Log "[VERSION] Could not read version from exe: $($_.Exception.Message)"
+        }
+    }
+    
+    Write-Log "[VERSION] Could not determine current version - assuming pre-4.0.0"
+    return "0.0.0"
+}
+
+# Function to check if migration is needed
+function Test-MigrationNeeded {
+    param(
+        [string]$CurrentVersion,
+        [string]$TargetVersion
+    )
+    
+    Write-Log "[MIGRATION CHECK] Current: $CurrentVersion, Target: $TargetVersion"
+    
+    $current = Parse-Version -VersionString $CurrentVersion
+    $target = Parse-Version -VersionString $TargetVersion
+    
+    # Migration is needed if:
+    # 1. Current version is < 4.0.1 (includes 4.0.0 and below) AND
+    # 2. Target version is >= 4.0.0
+    
+    $currentNeedsMigration = ($current.Major -lt 4) -or 
+                             ($current.Major -eq 4 -and $current.Minor -eq 0 -and $current.Patch -eq 0)
+    
+    $targetSupportsNewFormat = ($target.Major -gt 4) -or 
+                               ($target.Major -eq 4 -and $target.Minor -ge 0)
+    
+    $needsMigration = $currentNeedsMigration -and $targetSupportsNewFormat
+    
+    Write-Log "[MIGRATION CHECK] Current needs migration (< 4.0.1): $currentNeedsMigration"
+    Write-Log "[MIGRATION CHECK] Target supports new format (>= 4.0.0): $targetSupportsNewFormat"
+    Write-Log "[MIGRATION CHECK] Migration needed: $needsMigration"
+    
+    return $needsMigration
+}
+
+# Function to create default split config files
+function Create-DefaultSplitConfigs {
+    param([string]$ConfigPath)
+    
+    $smtpJsonPath = Join-Path $ConfigPath "smtp.json"
+    $userJsonPath = Join-Path $ConfigPath "user.json"
+    $graphJsonPath = Join-Path $ConfigPath "graph.json"
+    
+    if (-not (Test-Path $smtpJsonPath)) {
+        Write-Log "[DEFAULTS] Creating default smtp.json..."
+        $defaultSmtp = @{
+            Port = 25
+            BindAddress = "0.0.0.0"
+            RequireAuthentication = $true
+            MaxMessageSizeKb = 51200
+            EnableTls = $false
+            SmtpFlowEnabled = $true
+            SendDelayMs = 1000
+        }
+        $defaultSmtp | ConvertTo-Json -Depth 10 | Set-Content $smtpJsonPath -Force
+        Write-Log "[OK] Created default smtp.json"
+    }
+    
+    if (-not (Test-Path $userJsonPath)) {
+        Write-Log "[DEFAULTS] Creating default user.json..."
+        $defaultUser = @{
+            Credentials = @()
+        }
+        $defaultUser | ConvertTo-Json -Depth 10 | Set-Content $userJsonPath -Force
+        Write-Log "[OK] Created default user.json"
+    }
+    
+    if (-not (Test-Path $graphJsonPath)) {
+        Write-Log "[DEFAULTS] Creating default graph.json..."
+        $defaultGraph = @{
+            TenantId = ""
+            ClientId = ""
+            ClientSecret = ""
+            SenderEmail = ""
+        }
+        $defaultGraph | ConvertTo-Json -Depth 10 | Set-Content $graphJsonPath -Force
+        Write-Log "[OK] Created default graph.json"
+    }
+}
+
+# Function to migrate configuration files
+function Migrate-ConfigurationFiles {
+    param([string]$ConfigPath)
+    
+    Write-Log "[CONFIG MIGRATION] Starting configuration migration..."
+    
+    $smtpConfigPath = Join-Path $ConfigPath "smtp-config.json"
+    $smtpJsonPath = Join-Path $ConfigPath "smtp.json"
+    $userJsonPath = Join-Path $ConfigPath "user.json"
+    $graphJsonPath = Join-Path $ConfigPath "graph.json"
+    
+    # Only proceed if smtp-config.json exists
+    if (-not (Test-Path $smtpConfigPath)) {
+        Write-Log "[MIGRATION] No smtp-config.json found, creating defaults"
+        
+        # Create default smtp-config.json
+        $defaultConfig = @{
+            QueueSettings = @{
+                MaxRetryAttempts = 3
+                RetryDelayMinutes = 5
+            }
+            ApplicationSettings = @{
+                RunMode = 0
+            }
+            LogSettings = @{
+                LogLocation = "logs"
+                MinimumLevel = "Information"
+            }
+            UpdateSettings = @{
+                AutoUpdateEnabled = $true
+                CheckFrequency = 1
+                CheckTime = "02:00:00"
+                WeeklyCheckDay = 0
+                AutoDownload = $false
+                AutoInstall = $false
+                CheckOnStartup = $true
+                LastCheckDate = $null
+                LastUpdateDate = $null
+                LastInstalledVersion = $null
+            }
+        }
+        $defaultConfig | ConvertTo-Json -Depth 10 | Set-Content $smtpConfigPath -Force
+        Write-Log "[MIGRATION] Created default smtp-config.json"
+        
+        # Create default split configs
+        Create-DefaultSplitConfigs -ConfigPath $ConfigPath
+        return
+    }
+    
+    # Read the current configuration
+    $configContent = Get-Content $smtpConfigPath -Raw
+    $config = $configContent | ConvertFrom-Json
+    
+    $migrationNeeded = $false
+    
+    # Check if any migration is needed
+    if ($config.SmtpSettings -or $config.GraphSettings) {
+        $migrationNeeded = $true
+        Write-Log "[MIGRATION] Found settings that need migration"
+        
+        # Backup original config before migration
+        $backupPath = "$smtpConfigPath.pre-migration.backup"
+        Copy-Item $smtpConfigPath $backupPath -Force
+        Write-Log "[BACKUP] Created pre-migration backup: $backupPath"
+    }
+    
+    # Migrate SmtpSettings if present
+    if ($config.SmtpSettings) {
+        Write-Log "[MIGRATION] Migrating SmtpSettings..."
+        
+        # Extract SMTP settings for smtp.json with safe property access
+        $smtpConfig = @{
+            Port = if ($config.SmtpSettings.PSObject.Properties.Name -contains "Port") { $config.SmtpSettings.Port } else { 25 }
+            BindAddress = if ($config.SmtpSettings.PSObject.Properties.Name -contains "BindAddress") { $config.SmtpSettings.BindAddress } else { "0.0.0.0" }
+            RequireAuthentication = if ($config.SmtpSettings.PSObject.Properties.Name -contains "RequireAuthentication") { $config.SmtpSettings.RequireAuthentication } else { $true }
+            MaxMessageSizeKb = if ($config.SmtpSettings.PSObject.Properties.Name -contains "MaxMessageSizeKb") { $config.SmtpSettings.MaxMessageSizeKb } else { 51200 }
+            EnableTls = if ($config.SmtpSettings.PSObject.Properties.Name -contains "EnableTls") { $config.SmtpSettings.EnableTls } else { $false }
+            SmtpFlowEnabled = if ($config.SmtpSettings.PSObject.Properties.Name -contains "SmtpFlowEnabled") { $config.SmtpSettings.SmtpFlowEnabled } else { $true }
+            SendDelayMs = if ($config.SmtpSettings.PSObject.Properties.Name -contains "SendDelayMs") { $config.SmtpSettings.SendDelayMs } else { 1000 }
+        }
+        
+        # Extract credentials for user.json with safe property access
+        $userConfig = @{
+            Credentials = if ($config.SmtpSettings.PSObject.Properties.Name -contains "Credentials") { $config.SmtpSettings.Credentials } else { @() }
+        }
+        
+        # Save smtp.json
+        $smtpConfig | ConvertTo-Json -Depth 10 | Set-Content $smtpJsonPath -Force
+        Write-Log "[OK] Created smtp.json with SMTP settings"
+        
+        # Save user.json
+        $userConfig | ConvertTo-Json -Depth 10 | Set-Content $userJsonPath -Force
+        Write-Log "[OK] Created user.json with user credentials"
+        
+        # Remove SmtpSettings from the original config
+        $config.PSObject.Properties.Remove('SmtpSettings')
+    }
+    
+    # Migrate GraphSettings if present
+    if ($config.GraphSettings) {
+        Write-Log "[MIGRATION] Migrating GraphSettings..."
+        
+        # Extract Graph settings for graph.json with safe property access
+        $graphConfig = @{
+            TenantId = if ($config.GraphSettings.PSObject.Properties.Name -contains "TenantId") { $config.GraphSettings.TenantId } else { "" }
+            ClientId = if ($config.GraphSettings.PSObject.Properties.Name -contains "ClientId") { $config.GraphSettings.ClientId } else { "" }
+            ClientSecret = if ($config.GraphSettings.PSObject.Properties.Name -contains "ClientSecret") { $config.GraphSettings.ClientSecret } else { "" }
+            SenderEmail = if ($config.GraphSettings.PSObject.Properties.Name -contains "SenderEmail") { $config.GraphSettings.SenderEmail } else { "" }
+        }
+        
+        # Save graph.json
+        $graphConfig | ConvertTo-Json -Depth 10 | Set-Content $graphJsonPath -Force
+        Write-Log "[OK] Created graph.json with Graph API settings"
+        
+        # Remove GraphSettings from the original config
+        $config.PSObject.Properties.Remove('GraphSettings')
+    }
+    
+    # Save the updated smtp-config.json if migration occurred
+    if ($migrationNeeded) {
+        $config | ConvertTo-Json -Depth 10 | Set-Content $smtpConfigPath -Force
+        Write-Log "[OK] Updated smtp-config.json (removed migrated settings)"
+        Write-Log "[MIGRATION] Configuration migration completed successfully!"
+        Write-Log "[INFO] Original settings preserved in: $backupPath"
+    }
+    else {
+        Write-Log "[MIGRATION] No migration needed - configuration already in new format"
+    }
+    
+    # Create default files if they don't exist (for new installations or missing data)
+    Create-DefaultSplitConfigs -ConfigPath $ConfigPath
+}
+
 # Initialize log file
 $script:LogFile = Get-LogFilePath
 
@@ -196,12 +495,34 @@ if (Test-Path $NewUpdateScript) {
     Write-Log ""
 }
 
+# Display mode information at start
+Write-Log "=========================================="
+Write-Log "    SMTP Service Update Installer"
+Write-Log "=========================================="
+Write-Log ""
+
+if ($isFullyAutomatic) {
+    Write-Host "Running in FULLY AUTOMATIC mode" -ForegroundColor Green
+    Write-Host "AutoDownload: $($autoSettings.AutoDownload)" -ForegroundColor Green
+    Write-Host "AutoInstall: $($autoSettings.AutoInstall)" -ForegroundColor Green
+    Write-Host "All prompts will be automatically confirmed" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Log "Mode: FULLY AUTOMATIC (AutoDownload: $($autoSettings.AutoDownload), AutoInstall: $($autoSettings.AutoInstall))"
+    Write-Log "All prompts will be bypassed"
+} else {
+    Write-Host "Running in INTERACTIVE mode" -ForegroundColor Yellow
+    Write-Host "AutoDownload: $($autoSettings.AutoDownload)" -ForegroundColor Yellow
+    Write-Host "AutoInstall: $($autoSettings.AutoInstall)" -ForegroundColor Yellow
+    Write-Host "You will be prompted for confirmations" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Log "Mode: INTERACTIVE (AutoDownload: $($autoSettings.AutoDownload), AutoInstall: $($autoSettings.AutoInstall))"
+    Write-Log "User will be prompted for confirmations"
+}
+
+Write-Log ""
+
 # Auto-detect version if not specified
 if ([string]::IsNullOrEmpty($Version)) {
-    Write-Log "=========================================="
-    Write-Log "    SMTP Service Update Installer"
-    Write-Log "=========================================="
-    Write-Log ""
     Write-Log "Auto-detecting latest version..."
     
     $Version = Get-LatestVersion
@@ -215,10 +536,6 @@ if ([string]::IsNullOrEmpty($Version)) {
     Write-Log ""
 }
 else {
-    Write-Log "=========================================="
-    Write-Log "    SMTP Service Update Installer"
-    Write-Log "=========================================="
-    Write-Log ""
     Write-Log "Using specified version: $Version"
     Write-Log ""
 }
@@ -365,18 +682,23 @@ if ($updateScriptFile) {
         Write-Host "The update process will restart with the new version." -ForegroundColor Cyan
         Write-Host "" -ForegroundColor Yellow
         
-        $confirmation = Read-Host "Do you want to proceed? (Y/N)"
-        
-        if ($confirmation -notmatch '^[Yy]') {
-            Write-Log "User declined update script update"
-            Write-Host "Cannot continue - update script must be updated for this version." -ForegroundColor Red
-            Write-Host "Please run the update again and accept the script update." -ForegroundColor Yellow
+        if (-not $isFullyAutomatic) {
+            $confirmation = Read-Host "Do you want to proceed? (Y/N)"
             
-            # Cleanup extracted folder
-            if (Test-Path $ExtractPath) {
-                Remove-Item -Path $ExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+            if ($confirmation -notmatch '^[Yy]') {
+                Write-Log "User declined update script update"
+                Write-Host "Cannot continue - update script must be updated for this version." -ForegroundColor Red
+                Write-Host "Please run the update again and accept the script update." -ForegroundColor Yellow
+                
+                # Cleanup extracted folder
+                if (Test-Path $ExtractPath) {
+                    Remove-Item -Path $ExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                exit 1
             }
-            exit 1
+        } else {
+            Write-Host "Auto-confirmed: Proceeding with script update..." -ForegroundColor Green
+            Write-Log "Auto-confirmed: Update script update"
         }
         $forceUpdate = $true
     }
@@ -521,7 +843,7 @@ foreach ($currentFile in $CurrentFiles) {
         Write-Log "ORPHANED: $relativePath (not in update - will be removed)"
         $OrphanedFiles += [PSCustomObject]@{
             Path = $relativePath
-            FullPath = $currentFile.FullName
+            FullPath = $currentFile.FullPath
         }
     }
 }
@@ -627,23 +949,29 @@ Write-Host ""
 Write-Host "A full backup will be created in the backup folder." -ForegroundColor Gray
 Write-Host ""
 
-$confirmation = Read-Host "Do you want to proceed with the update? (Y/N)"
+if (-not $isFullyAutomatic) {
+    $confirmation = Read-Host "Do you want to proceed with the update? (Y/N)"
 
-if ($confirmation -notmatch '^[Yy]') {
-    Write-Log "Update cancelled by user"
-    Write-Host ""
-    Write-Host "Update cancelled. No changes were made." -ForegroundColor Yellow
-    Write-Host ""
-    
-    # Cleanup extracted folder since we're cancelling
-    if (Test-Path $ExtractPath) {
-        Remove-Item -Path $ExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+    if ($confirmation -notmatch '^[Yy]') {
+        Write-Log "Update cancelled by user"
+        Write-Host ""
+        Write-Host "Update cancelled. No changes were made." -ForegroundColor Yellow
+        Write-Host ""
+        
+        # Cleanup extracted folder since we're cancelling
+        if (Test-Path $ExtractPath) {
+            Remove-Item -Path $ExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        
+        exit 0
     }
     
-    exit 0
+    Write-Log "User confirmed update - proceeding..."
+} else {
+    Write-Host "Auto-confirmed: Proceeding with update..." -ForegroundColor Green
+    Write-Log "Auto-confirmed: Proceeding with update"
 }
 
-Write-Log "User confirmed update - proceeding..."
 Write-Log ""
 
 # Step 4: Stop the service if running
@@ -657,6 +985,35 @@ if (-not (Stop-SmtpService)) {
     Write-Log "Please stop the service manually and run the update again."
     exit 1
 }
+Write-Log ""
+
+# Step 4.5: Migrate configuration files (if needed)
+Write-Log "Step 4.5: Configuration migration..."
+Write-Log "=========================================="
+Write-Log ""
+
+# Determine if migration is needed
+$configPath = Join-Path $RootPath "config"
+if (Test-Path $configPath) {
+    $currentVersion = Get-CurrentVersion
+    $targetVersion = $Version
+    
+    if (Test-MigrationNeeded -CurrentVersion $currentVersion -TargetVersion $targetVersion) {
+        Write-Log "[MIGRATION] Migration required from v$currentVersion to v$targetVersion"
+        Migrate-ConfigurationFiles -ConfigPath $configPath
+    }
+    else {
+        Write-Log "[MIGRATION] No migration needed (Current: v$currentVersion, Target: v$targetVersion)"
+        
+        # Still ensure default files exist if missing
+        Write-Log "[DEFAULTS] Checking for missing configuration files..."
+        Create-DefaultSplitConfigs -ConfigPath $configPath
+    }
+}
+else {
+    Write-Log "[WARNING] Config folder not found at: $configPath"
+}
+
 Write-Log ""
 
 # Step 5: Create backups and replace files
@@ -919,7 +1276,7 @@ else {
     Write-Log "Backup location: $BackupFolder"
 }
 
-# Step 8: Cleanup old backups (keep only 20 most recent)
+# Step 8: Backup maintenance...
 Write-Log ""
 Write-Log "Step 8: Backup maintenance..."
 Write-Log "=========================================="
