@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SMTP Service", "SMTP Servic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SMTPServiceUpdater", "SMTPServiceUpdater\SMTPServiceUpdater.csproj", "{4B9CBC43-147E-41B8-A37D-000E047DF79B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SMTP.Core", "SMTP.Core\SMTP.Core.csproj", "{94798187-4DE7-45C7-BDB2-2E67C8F524EF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{4B9CBC43-147E-41B8-A37D-000E047DF79B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4B9CBC43-147E-41B8-A37D-000E047DF79B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4B9CBC43-147E-41B8-A37D-000E047DF79B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94798187-4DE7-45C7-BDB2-2E67C8F524EF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94798187-4DE7-45C7-BDB2-2E67C8F524EF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94798187-4DE7-45C7-BDB2-2E67C8F524EF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94798187-4DE7-45C7-BDB2-2E67C8F524EF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

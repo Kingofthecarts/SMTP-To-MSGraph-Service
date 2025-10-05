@@ -7,19 +7,25 @@
     <UserSecretsId>dotnet-SMTP_Service-e7879f41-b88e-40fa-8b6b-2fe0828c3265</UserSecretsId>
     <RootNamespace>SMTP_Service</RootNamespace>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>4.0.1</Version>
-    <AssemblyVersion>4.0.1</AssemblyVersion>
-    <FileVersion>4.0.1</FileVersion>
-    <Product>SMTP to MS Graph Relay Service</Product>
-    <Description>SMTP relay service that forwards emails to Microsoft 365 via MS Graph API</Description>
-    <Company>Dores</Company>
-    <Copyright>Copyright © 2025</Copyright>
+    <!-- Version info inherited from Directory.Build.props -->
   </PropertyGroup>
 
   <!-- Post-build event to copy CHANGELOG.md to docs folder -->
   <Target Name="CopyChangelogToDocsFolder" AfterTargets="Build">
     <MakeDir Directories="$(OutputPath)docs" />
     <Copy SourceFiles="docs\CHANGELOG.md" DestinationFolder="$(OutputPath)docs" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Post-build event to copy SMTPServiceUpdater to output folder -->
+  <Target Name="CopyUpdaterToOutput" AfterTargets="Build">
+    <!-- Build SMTPServiceUpdater first -->
+    <MSBuild Projects="..\SMTPServiceUpdater\SMTPServiceUpdater.csproj" Properties="Configuration=$(Configuration)" />
+    
+    <!-- Copy all SMTPServiceUpdater output files -->
+    <ItemGroup>
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UpdaterFiles)" DestinationFolder="$(OutputPath)%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
 
   <ItemGroup>
