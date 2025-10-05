@@ -36,6 +36,7 @@
   <!-- Explicitly include template as documentation only (never copy) -->
 
   <ItemGroup>
+    <None Remove="changes.txt" />
     <None Remove="install-service.bat" />
     <None Remove="Setup-GitHubToken.ps1" />
     <None Remove="Test-GitHubConfig.ps1" />
