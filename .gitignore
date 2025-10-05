@@ -402,3 +402,5 @@ FodyWeavers.xsd
 /SMTP Service/docs/01_FLOW_AND_BREAKDOWN.txt
 /SMTP Service/docs/02_END_USER_GUIDE.txt
 /SMTP Service/docs/03_PROGRAMMER_ADMIN_GUIDE.txt
+/SMTP Service/changes.txt
+/SMTPServiceUpdater/changes.txt
