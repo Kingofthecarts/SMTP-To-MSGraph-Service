@@ -404,3 +404,5 @@ FodyWeavers.xsd
 /SMTP Service/docs/03_PROGRAMMER_ADMIN_GUIDE.txt
 /SMTP Service/changes.txt
 /SMTPServiceUpdater/changes.txt
+/SMTPServiceUpdater/changes_completed.txt
+/SMTPServiceUpdater/changes_DELETE.txt
