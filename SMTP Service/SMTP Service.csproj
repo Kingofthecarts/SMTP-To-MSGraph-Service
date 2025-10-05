@@ -18,14 +18,41 @@
 
   <!-- Post-build event to copy SMTPServiceUpdater to output folder -->
   <Target Name="CopyUpdaterToOutput" AfterTargets="Build">
-    <!-- Build SMTPServiceUpdater first -->
-    <MSBuild Projects="..\SMTPServiceUpdater\SMTPServiceUpdater.csproj" Properties="Configuration=$(Configuration)" />
+    <!-- Build SMTPServiceUpdater in the same configuration -->
+    <MSBuild Projects="..\SMTPServiceUpdater\SMTPServiceUpdater.csproj" 
+             Properties="Configuration=$(Configuration)" 
+             Targets="Build" />
     
     <!-- Copy all SMTPServiceUpdater output files -->
     <ItemGroup>
-      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\**\*.*" />
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\*.exe" />
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\*.dll" />
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\*.json" />
     </ItemGroup>
-    <Copy SourceFiles="@(UpdaterFiles)" DestinationFolder="$(OutputPath)%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(UpdaterFiles)" 
+          DestinationFolder="$(OutputPath)" 
+          SkipUnchangedFiles="true" />
+    
+    <Message Text="Copied SMTPServiceUpdater files to $(OutputPath)" Importance="high" />
+  </Target>
+
+  <!-- Post-publish event to copy SMTPServiceUpdater to publish folder -->
+  <Target Name="CopyUpdaterToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <!-- Build SMTPServiceUpdater first in Release mode to ensure it's up to date -->
+    <MSBuild Projects="..\SMTPServiceUpdater\SMTPServiceUpdater.csproj" 
+             Properties="Configuration=Release" 
+             Targets="Build" />
+    
+    <!-- Copy the freshly built SMTPServiceUpdater.exe -->
+    <ItemGroup>
+      <UpdaterExe Include="..\SMTPServiceUpdater\bin\Release\net9.0\SMTPServiceUpdater.exe" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UpdaterExe)" 
+          DestinationFolder="$(PublishDir)" 
+          SkipUnchangedFiles="false" />
+    
+    <!-- Log a message -->
+    <Message Text="Built and copied SMTPServiceUpdater.exe to $(PublishDir)" Importance="high" />
   </Target>
 
   <ItemGroup>
