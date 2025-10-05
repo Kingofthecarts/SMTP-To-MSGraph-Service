@@ -23,11 +23,11 @@
              Properties="Configuration=$(Configuration)" 
              Targets="Build" />
     
-    <!-- Copy all SMTPServiceUpdater output files -->
+    <!-- Copy all SMTPServiceUpdater output files (note: net9.0-windows framework) -->
     <ItemGroup>
-      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\*.exe" />
-      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\*.dll" />
-      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0\*.json" />
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0-windows\*.exe" />
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0-windows\*.dll" />
+      <UpdaterFiles Include="..\SMTPServiceUpdater\bin\$(Configuration)\net9.0-windows\*.json" />
     </ItemGroup>
     <Copy SourceFiles="@(UpdaterFiles)" 
           DestinationFolder="$(OutputPath)" 
@@ -38,14 +38,14 @@
 
   <!-- Post-publish event to copy SMTPServiceUpdater to publish folder -->
   <Target Name="CopyUpdaterToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
-    <!-- Build SMTPServiceUpdater first in Release mode to ensure it's up to date -->
+    <!-- Build SMTPServiceUpdater in Release mode to ensure it's up to date -->
     <MSBuild Projects="..\SMTPServiceUpdater\SMTPServiceUpdater.csproj" 
              Properties="Configuration=Release" 
              Targets="Build" />
     
-    <!-- Copy the freshly built SMTPServiceUpdater.exe -->
+    <!-- Copy the freshly built SMTPServiceUpdater.exe (note: net9.0-windows framework) -->
     <ItemGroup>
-      <UpdaterExe Include="..\SMTPServiceUpdater\bin\Release\net9.0\SMTPServiceUpdater.exe" />
+      <UpdaterExe Include="..\SMTPServiceUpdater\bin\Release\net9.0-windows\SMTPServiceUpdater.exe" />
     </ItemGroup>
     <Copy SourceFiles="@(UpdaterExe)" 
           DestinationFolder="$(PublishDir)" 

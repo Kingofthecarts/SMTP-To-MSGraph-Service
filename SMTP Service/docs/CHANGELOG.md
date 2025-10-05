@@ -1,5 +1,46 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 4.2.1 - October 5, 2025
+
+### 🐛 Bug Fixes
+
+**Configuration UI**
+- Fixed compilation error in ConfigurationForm.cs related to UpdateCheckFrequency enum
+- Resolved CS0246 error preventing application from building
+
+### Impact
+Application now compiles successfully. No functional changes to runtime behavior.
+
+---
+
+## VERSION 4.2.0 - October 5, 2025
+
+### ✨ New Features
+
+**New C# GUI Updater (In Development)**
+- Complete rewrite of update system from PowerShell to C#
+- GUI with Download and Install buttons for user-friendly updates
+- GitHub integration for automatic update downloads
+- Real-time progress display and color-coded logging
+- Command-line modes for automation (-a auto, -c console)
+- **Note:** PowerShell updater (Install-Update.ps1) still included and functional
+- GUI updater currently in testing phase
+
+### 🔧 Improvements
+
+**Build System**
+- Fixed SMTPServiceUpdater integration with publish process
+- Corrected framework path references (net9.0-windows)
+- Release builds now properly include updater executable
+
+### 📦 Technical
+
+- New SMTPServiceUpdater.exe alongside existing Install-Update.ps1
+- Both updaters fully functional during transition period
+- Future versions will phase out PowerShell script
+
+---
+
 ## VERSION 4.0.1 - October 4, 2025
 
 ### 🐛 Bug Fixes

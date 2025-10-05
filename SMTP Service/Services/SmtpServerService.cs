@@ -5,15 +5,17 @@ using System.Text;
 using SMTP_Service.Managers;
 using SMTP_Service.Models;
 using Microsoft.Extensions.Logging;
+using ConfigManager = SMTP_Service.Managers.ConfigurationManager;
 
 namespace SMTP_Service.Services
 {
     public class SmtpServerService
     {
         private readonly ILogger<SmtpServerService> _logger;
-        private readonly SmtpConfiguration _smtpConfig;
-        private readonly UserConfiguration _userConfig;
+        private SmtpConfiguration _smtpConfig;
+        private UserConfiguration _userConfig;
         private readonly QueueManager _queueManager;
+        private readonly ConfigManager _configManager;
         private TcpListener? _listener;
         private CancellationTokenSource? _cancellationTokenSource;
         private bool _isRunning = false;
@@ -26,13 +28,21 @@ namespace SMTP_Service.Services
             ILogger<SmtpServerService> logger, 
             SmtpConfiguration smtpConfig,
             UserConfiguration userConfig,
-            QueueManager queueManager)
+            QueueManager queueManager,
+            ConfigManager configManager)
         {
             _logger = logger;
             _smtpConfig = smtpConfig;
             _userConfig = userConfig;
             _queueManager = queueManager;
+            _configManager = configManager;
             _smtpFlowEnabled = smtpConfig.SmtpFlowEnabled; // Initialize from config
+            
+            // Subscribe to configuration changes
+            _configManager.SmtpConfigurationChanged += OnSmtpConfigurationChanged;
+            _configManager.UserConfigurationChanged += OnUserConfigurationChanged;
+            
+            _logger.LogInformation("SmtpServerService initialized with RequireAuthentication={RequireAuth}", _smtpConfig.RequireAuthentication);
         }
 
         /// <summary>
@@ -452,6 +462,78 @@ namespace SMTP_Service.Services
         /// Get count of active SMTP sessions
         /// </summary>
         public int ActiveSessionCount => _activeConnections.Count;
+
+        /// <summary>
+        /// Handle SMTP configuration changes - restart server with new config
+        /// </summary>
+        private async void OnSmtpConfigurationChanged(SmtpConfiguration newConfig)
+        {
+            _logger.LogWarning("SMTP Configuration changed - RequireAuthentication: {RequireAuth}, Port: {Port}", 
+                newConfig.RequireAuthentication, newConfig.Port);
+            
+            // Check if critical settings changed that require restart
+            bool needsRestart = _smtpConfig.Port != newConfig.Port || 
+                               _smtpConfig.BindAddress != newConfig.BindAddress;
+            
+            // Update configuration
+            _smtpConfig = newConfig;
+            _smtpFlowEnabled = newConfig.SmtpFlowEnabled;
+            
+            if (needsRestart && _isRunning)
+            {
+                _logger.LogWarning("Critical SMTP settings changed - restarting server...");
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("\n═══════════════════════════════════════");
+                Console.WriteLine("⚠️  SMTP SERVER RESTARTING");
+                Console.WriteLine($"Port: {newConfig.Port}");
+                Console.WriteLine($"Bind: {newConfig.BindAddress}");
+                Console.WriteLine($"Auth Required: {newConfig.RequireAuthentication}");
+                Console.WriteLine("═══════════════════════════════════════\n");
+                Console.ResetColor();
+                
+                await RestartServerAsync();
+                
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("✅ SMTP Server restarted successfully\n");
+                Console.ResetColor();
+            }
+            else
+            {
+                _logger.LogInformation("SMTP configuration updated (no restart required)");
+            }
+        }
+
+        /// <summary>
+        /// Handle User configuration changes
+        /// </summary>
+        private void OnUserConfigurationChanged(UserConfiguration newConfig)
+        {
+            _logger.LogInformation("User configuration changed - {Count} users configured", newConfig.Credentials.Count);
+            _userConfig = newConfig;
+        }
+
+        /// <summary>
+        /// Restart the SMTP server with current configuration
+        /// </summary>
+        private async Task RestartServerAsync()
+        {
+            try
+            {
+                // Stop current server
+                await StopAsync();
+                
+                // Small delay to ensure clean shutdown
+                await Task.Delay(500);
+                
+                // Start with new configuration
+                await StartAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restarting SMTP server");
+                throw;
+            }
+        }
     }
 
     /// <summary>

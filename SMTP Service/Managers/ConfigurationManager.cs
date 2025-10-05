@@ -18,6 +18,12 @@ namespace SMTP_Service.Managers
         private UserConfiguration? _userConfig;
         private GraphConfiguration? _graphConfig;
 
+        // Events for configuration changes
+        public event Action<SmtpConfiguration>? SmtpConfigurationChanged;
+        public event Action<UserConfiguration>? UserConfigurationChanged;
+        public event Action<GraphConfiguration>? GraphConfigurationChanged;
+        public event Action<AppConfig>? AppConfigurationChanged;
+
         // Shared JSON options for consistency
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
@@ -108,12 +114,26 @@ namespace SMTP_Service.Managers
                 _config = config;
                 Console.WriteLine($"Configuration saved successfully to smtp-config.json");
                 Log.Information("Configuration saved to smtp-config.json");
+                
+                // Notify subscribers of configuration change
+                AppConfigurationChanged?.Invoke(config);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"ERROR saving configuration: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Reload App configuration from disk and update in-memory config
+        /// </summary>
+        public AppConfig ReloadConfiguration()
+        {
+            Log.Information("Reloading App configuration from disk...");
+            var config = LoadConfiguration();
+            AppConfigurationChanged?.Invoke(config);
+            return config;
         }
         #endregion
 
@@ -172,12 +192,28 @@ namespace SMTP_Service.Managers
                 _smtpConfig = config;
                 Console.WriteLine($"SMTP configuration saved to smtp.json");
                 Log.Information("SMTP configuration saved to smtp.json");
+                Log.Information($"SMTP Config - RequireAuthentication: {config.RequireAuthentication}, Port: {config.Port}, BindAddress: {config.BindAddress}");
+                
+                // Notify subscribers of configuration change
+                SmtpConfigurationChanged?.Invoke(config);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"ERROR saving SMTP configuration: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Reload SMTP configuration from disk and update in-memory config
+        /// </summary>
+        public SmtpConfiguration ReloadSmtpConfiguration()
+        {
+            Log.Information("Reloading SMTP configuration from disk...");
+            var config = LoadSmtpConfiguration();
+            Log.Information($"SMTP configuration reloaded - RequireAuthentication: {config.RequireAuthentication}");
+            SmtpConfigurationChanged?.Invoke(config);
+            return config;
         }
         #endregion
 
@@ -244,12 +280,26 @@ namespace SMTP_Service.Managers
                 _userConfig = config;
                 Console.WriteLine($"User configuration saved to user.json");
                 Log.Information("User configuration saved to user.json");
+                
+                // Notify subscribers of configuration change
+                UserConfigurationChanged?.Invoke(config);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"ERROR saving user configuration: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Reload User configuration from disk and update in-memory config
+        /// </summary>
+        public UserConfiguration ReloadUserConfiguration()
+        {
+            Log.Information("Reloading User configuration from disk...");
+            var config = LoadUserConfiguration();
+            UserConfigurationChanged?.Invoke(config);
+            return config;
         }
         #endregion
 
@@ -316,12 +366,26 @@ namespace SMTP_Service.Managers
                 _graphConfig = config;
                 Console.WriteLine($"Graph configuration saved to graph.json");
                 Log.Information("Graph configuration saved to graph.json");
+                
+                // Notify subscribers of configuration change
+                GraphConfigurationChanged?.Invoke(config);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"ERROR saving Graph configuration: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Reload Graph configuration from disk and update in-memory config
+        /// </summary>
+        public GraphConfiguration ReloadGraphConfiguration()
+        {
+            Log.Information("Reloading Graph configuration from disk...");
+            var config = LoadGraphConfiguration();
+            GraphConfigurationChanged?.Invoke(config);
+            return config;
         }
         #endregion
 

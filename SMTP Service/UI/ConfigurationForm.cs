@@ -1,13 +1,14 @@
-using System.Windows.Forms;
-using System.Diagnostics;
-using SMTP_Service.Models;
-using SMTP_Service.Helpers;
-using Serilog;
+using EmailService.Flow;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using SMTP_Service.Helpers;
+using SMTP_Service.Models;
+using System.Diagnostics;
+using System.Windows.Forms;
 
 namespace SMTP_Service.UI
 {
-    public class ConfigurationForm : Form
+    public partial class ConfigurationForm : Form
     {
         private readonly Managers.ConfigurationManager _configManager;
         private AppConfig _config;
@@ -2408,90 +2409,177 @@ namespace SMTP_Service.UI
         {
             try
             {
-                // Validate inputs
+                Log.Information("User clicked Save button - validating and saving configuration");
+
+                // Validate port
                 if (!int.TryParse(txtSmtpPort.Text, out int port) || port < 1 || port > 65535)
                 {
-                    MessageBox.Show("Please enter a valid port number (1-65535)", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("Invalid SMTP port. Please enter a port between 1 and 65535.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                // Determine bind address
-                string bindAddress = cmbBindAddress.SelectedIndex == 1 ? "127.0.0.1" : "0.0.0.0";
+                // Capture old SMTP config values before changing them
+                var oldRequireAuth = _smtpConfig.RequireAuthentication;
+                var oldPort = _smtpConfig.Port;
+                var oldBindAddress = _smtpConfig.BindAddress;
 
                 // Update SMTP configuration
                 _smtpConfig.Port = port;
-                _smtpConfig.MaxMessageSizeKb = (int)numMaxMessageSizeKb.Value * 1024; // Convert MB to KB for storage
+                _smtpConfig.BindAddress = cmbBindAddress.SelectedIndex == 1 ? "127.0.0.1" : "0.0.0.0";
                 _smtpConfig.RequireAuthentication = chkRequireAuth.Checked;
-                
-                // Save bind address
-                _smtpConfig.BindAddress = bindAddress;
-                
-                // Save flow control settings
-                _config.SmtpSettings.SendDelayMs = (int)numSendDelay.Value;
+                _smtpConfig.MaxMessageSizeKb = (int)(numMaxMessageSizeKb.Value * 1024); // Convert MB to KB
+                _smtpConfig.SendDelayMs = (int)numSendDelay.Value;
 
-                // Use actual values for Tenant ID and Client ID (not the masked display values)
-                // If actual values are empty but textbox has masked values, keep the original config values
-                if (!string.IsNullOrWhiteSpace(_actualTenantId))
-                {
-                    _config.GraphSettings.TenantId = _actualTenantId;
-                }
-                else if (IsMasked(txtTenantId.Text))
-                {
-                    // Keep existing value - it's still masked, user didn't change it
-                    // Don't update _config.GraphSettings.TenantId
-                }
-                else
-                {
-                    _config.GraphSettings.TenantId = txtTenantId.Text.Trim();
-                }
-                
-                if (!string.IsNullOrWhiteSpace(_actualClientId))
-                {
-                    _config.GraphSettings.ClientId = _actualClientId;
-                }
-                else if (IsMasked(txtClientId.Text))
-                {
-                    // Keep existing value - it's still masked, user didn't change it
-                    // Don't update _config.GraphSettings.ClientId
-                }
-                else
-                {
-                    _config.GraphSettings.ClientId = txtClientId.Text.Trim();
-                }
-                
-                _config.GraphSettings.ClientSecret = txtClientSecret.Text;
-                _config.GraphSettings.SenderEmail = txtSenderEmail.Text.Trim();
+                // Save SMTP configuration first
+                Log.Information($"Saving SMTP configuration - RequireAuthentication changing from {oldRequireAuth} to {_smtpConfig.RequireAuthentication}");
+                _configManager.SaveSmtpConfiguration(_smtpConfig);
 
+                // Save User configuration
+                Log.Information($"Saving User configuration - {_userConfig.Credentials.Count} users");
+                _configManager.SaveUserConfiguration(_userConfig);
+
+                // Update Graph configuration with actual values (not masked)
+                if (!IsMasked(txtTenantId.Text))
+                {
+                    _graphConfig.TenantId = txtTenantId.Text.Trim();
+                }
+                else if (!string.IsNullOrEmpty(_actualTenantId))
+                {
+                    _graphConfig.TenantId = _actualTenantId;
+                }
+
+                if (!IsMasked(txtClientId.Text))
+                {
+                    _graphConfig.ClientId = txtClientId.Text.Trim();
+                }
+                else if (!string.IsNullOrEmpty(_actualClientId))
+                {
+                    _graphConfig.ClientId = _actualClientId;
+                }
+
+                _graphConfig.ClientSecret = txtClientSecret.Text.Trim();
+                _graphConfig.SenderEmail = txtSenderEmail.Text.Trim();
+
+                Log.Information("Saving Graph configuration");
+                _configManager.SaveGraphConfiguration(_graphConfig);
+
+                // Update App configuration
                 _config.QueueSettings.MaxRetryAttempts = (int)numMaxRetry.Value;
                 _config.QueueSettings.RetryDelayMinutes = (int)numRetryDelay.Value;
-
                 _config.ApplicationSettings.RunMode = cmbRunMode.SelectedIndex;
-                _config.LogSettings.LogLocation = txtLogLocation.Text.Trim();
 
-                // Update Settings
+                // Handle log location
+                var logLocationValue = txtLogLocation.Text.Trim();
+                var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+
+                if (logLocationValue.StartsWith(baseDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Convert absolute path to relative path
+                    var relativePath = Path.GetRelativePath(baseDirectory, logLocationValue);
+                    _config.LogSettings.LogLocation = relativePath;
+                }
+                else if (Path.IsPathRooted(logLocationValue))
+                {
+                    // Use absolute path as-is
+                    _config.LogSettings.LogLocation = logLocationValue;
+                }
+                else
+                {
+                    // Already relative
+                    _config.LogSettings.LogLocation = logLocationValue;
+                }
+
+                // Update settings
                 _config.UpdateSettings.AutoUpdateEnabled = chkAutoUpdateEnabled.Checked;
-                _config.UpdateSettings.CheckFrequency = (UpdateCheckFrequency)(cmbCheckFrequency.SelectedIndex + 1); // Enum starts at 1
+                _config.UpdateSettings.CheckFrequency = (UpdateCheckFrequency)(cmbCheckFrequency.SelectedIndex + 1);
                 _config.UpdateSettings.CheckTime = dtpCheckTime.Value.TimeOfDay;
                 _config.UpdateSettings.WeeklyCheckDay = (DayOfWeek)cmbWeeklyCheckDay.SelectedIndex;
                 _config.UpdateSettings.AutoDownload = chkAutoDownload.Checked;
                 _config.UpdateSettings.AutoInstall = chkAutoInstall.Checked;
                 _config.UpdateSettings.CheckOnStartup = chkCheckOnStartup.Checked;
-                // Note: LastCheckDate, LastUpdateDate, and LastInstalledVersion are tracked automatically by the update service
 
-                // Save configuration
+                Log.Information("Saving App configuration");
                 _configManager.SaveConfiguration(_config);
 
-                // Reset change tracking
+                // Update flow control
+                if (SmtpFlowControl.Instance.SendDelayMs != _smtpConfig.SendDelayMs)
+                {
+                    SmtpFlowControl.Instance.UpdateSendDelay(_smtpConfig.SendDelayMs);
+                    Log.Information($"Updated send delay to {_smtpConfig.SendDelayMs}ms");
+                }
+
+                // Clear unsaved changes flag
                 _hasUnsavedChanges = false;
                 btnSave.Enabled = false;
                 btnCancel.Text = "Close";
 
-                MessageBox.Show("Configuration saved successfully!\n\nNote: You may need to restart the service for changes to take effect.", 
-                    "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                // Determine if critical SMTP settings changed that require restart
+                bool smtpRequiresRestart = oldPort != _smtpConfig.Port || oldBindAddress != _smtpConfig.BindAddress;
+
+                // Show appropriate success message based on what changed
+                if (_isUiOnlyMode)
+                {
+                    // UI-only mode - configuration saved, service will reload automatically via events
+                    if (smtpRequiresRestart)
+                    {
+                        MessageBox.Show(
+                            "Configuration saved successfully!\n\n" +
+                            "⚠️ SMTP server settings changed:\n" +
+                            $"  • Port: {oldPort} → {_smtpConfig.Port}\n" +
+                            $"  • Bind: {oldBindAddress} → {_smtpConfig.BindAddress}\n\n" +
+                            "The SMTP server is restarting with new settings...\n\n" +
+                            "✅ Other settings (authentication, users) updated immediately.",
+                            "Configuration Saved",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+                    else if (oldRequireAuth != _smtpConfig.RequireAuthentication)
+                    {
+                        MessageBox.Show(
+                            "Configuration saved successfully!\n\n" +
+                            $"✅ Authentication requirement changed: {(oldRequireAuth ? "Required" : "Optional")} → {(_smtpConfig.RequireAuthentication ? "Required" : "Optional")}\n\n" +
+                            "This change takes effect immediately for new connections.",
+                            "Configuration Saved",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show(
+                            "Configuration saved successfully!\n\n" +
+                            "✅ All settings updated and applied.",
+                            "Configuration Saved",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+
+                    Log.Information("Configuration saved in UI-only mode - service will reload automatically");
+                }
+                else
+                {
+                    // Service mode - restart required
+                    MessageBox.Show(
+                        "Configuration saved successfully!\n\n" +
+                        "⚠️ Please restart the application for all changes to take effect.\n\n" +
+                        "Changes saved:\n" +
+                        $"  • SMTP Port: {_smtpConfig.Port}\n" +
+                        $"  • SMTP Bind Address: {_smtpConfig.BindAddress}\n" +
+                        $"  • Require Authentication: {(_smtpConfig.RequireAuthentication ? "Yes" : "No")}\n" +
+                        $"  • Users: {_userConfig.Credentials.Count} configured\n" +
+                        $"  • Send Delay: {_smtpConfig.SendDelayMs}ms",
+                        "Configuration Saved - Restart Required",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+
+                    Log.Information("Configuration saved in service mode - restart required for changes");
+                }
+
+                Log.Information("All configuration changes saved successfully");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error saving configuration: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Log.Error(ex, "Error saving configuration");
+                MessageBox.Show($"Error saving configuration:\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
