@@ -406,3 +406,6 @@ FodyWeavers.xsd
 /SMTPServiceUpdater/changes.txt
 /SMTPServiceUpdater/changes_completed.txt
 /SMTPServiceUpdater/changes_DELETE.txt
+/SMTP Service/MANUAL_UPDATE_INSTRUCTIONS.txt
+/SMTPServiceUpdater/docs/STEP_15.txt
+/SMTPServiceUpdater/docs/STEP_16.txt
