@@ -43,7 +43,7 @@ public class VersionInfo : IComparable<VersionInfo>
     /// <summary>
     /// Parses a version string into a VersionInfo object
     /// </summary>
-    /// <param name="versionString">Version string in format "major.minor.patch"</param>
+    /// <param name="versionString">Version string in format "major.minor.patch" (may include build metadata like "+commit")</param>
     /// <returns>VersionInfo object</returns>
     /// <exception cref="ArgumentException">Thrown when version string is invalid</exception>
     public static VersionInfo Parse(string versionString)
@@ -55,6 +55,20 @@ public class VersionInfo : IComparable<VersionInfo>
 
         // Remove 'v' prefix if present
         var cleanVersion = versionString.TrimStart('v', 'V');
+
+        // Strip build metadata (everything after '+' sign) - e.g., "4.2.1+68c0b3531c143" -> "4.2.1"
+        int plusIndex = cleanVersion.IndexOf('+');
+        if (plusIndex >= 0)
+        {
+            cleanVersion = cleanVersion.Substring(0, plusIndex);
+        }
+
+        // Strip prerelease metadata (everything after '-' sign) - e.g., "4.2.1-beta" -> "4.2.1"
+        int dashIndex = cleanVersion.IndexOf('-');
+        if (dashIndex >= 0)
+        {
+            cleanVersion = cleanVersion.Substring(0, dashIndex);
+        }
 
         var parts = cleanVersion.Split('.');
         if (parts.Length != 3)

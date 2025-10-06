@@ -32,13 +32,20 @@ public class UpdateLogger
 
         _rootPath = rootPath;
 
-        // Build path to existing logs folder
+        // Build path to logs folder
         var logsFolder = Path.Combine(rootPath, "logs");
 
-        // Ensure logs folder exists
+        // Create logs folder if it doesn't exist
         if (!Directory.Exists(logsFolder))
         {
-            throw new DirectoryNotFoundException($"Logs folder not found at: {logsFolder}");
+            try
+            {
+                Directory.CreateDirectory(logsFolder);
+            }
+            catch (Exception ex)
+            {
+                throw new DirectoryNotFoundException($"Unable to create logs folder at: {logsFolder}. Error: {ex.Message}");
+            }
         }
 
         // Generate incremental log file name

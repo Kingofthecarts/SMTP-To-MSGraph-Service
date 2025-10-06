@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
 using SMTPServiceUpdater.Models;
+using SMTPServiceUpdater.Helpers;
 
 namespace SMTPServiceUpdater.Services
 {
@@ -16,6 +17,7 @@ namespace SMTPServiceUpdater.Services
         private readonly UpdateLogger _logger;
         private readonly string _rootPath;
         private static readonly HttpClient _httpClient = new HttpClient();
+        private GitHubConfig? _cachedConfig;
 
         public GitHubDownloader(UpdateLogger logger, string rootPath)
         {
@@ -43,34 +45,51 @@ namespace SMTPServiceUpdater.Services
         {
             try
             {
+                _logger.WriteLog("Connecting to GitHub...", LogLevel.Info);
                 _logger.WriteLog("Checking for updates from GitHub...", LogLevel.Info);
 
                 // Read git.json configuration
                 GitHubConfig? config = ReadGitConfig();
-                if (config == null)
+                _cachedConfig = config; // Cache for download method
+                
+                if (config?.GitHub == null)
                 {
                     _logger.WriteLog("git.json not found or invalid", LogLevel.Error);
                     return null;
                 }
 
-                if (string.IsNullOrWhiteSpace(config.Owner) || string.IsNullOrWhiteSpace(config.Repository))
+                // Decrypt the repository owner and name
+                string owner = GitConfigDecryptor.DecryptString(config.GitHub.RepoOwner);
+                string repository = GitConfigDecryptor.DecryptString(config.GitHub.RepoName);
+
+                if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repository))
                 {
-                    _logger.WriteLog("GitHub Owner or Repository not configured in git.json", LogLevel.Error);
+                    _logger.WriteLog("GitHub Owner or Repository not configured or decryption failed", LogLevel.Error);
+                    _logger.WriteLog("Check git.json configuration file", LogLevel.Error);
                     return null;
                 }
 
-                _logger.WriteLog($"Repository: {config.Owner}/{config.Repository}", LogLevel.Info);
+                _logger.WriteLog($"Repository: {owner}/{repository}", LogLevel.Info);
+
+                // Get and display current version first
+                string currentVersion = VersionManager.GetCurrentVersion(_rootPath);
+                _logger.WriteLog($"Current installed version: {currentVersion}", LogLevel.Info);
 
                 // Build GitHub API URL
-                string apiUrl = $"https://api.github.com/repos/{config.Owner}/{config.Repository}/releases/latest";
+                string apiUrl = $"https://api.github.com/repos/{owner}/{repository}/releases/latest";
+                _logger.WriteLog($"Querying GitHub API...", LogLevel.Info);
 
                 // Create request
                 var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
                 
-                // Add authorization header if token provided
-                if (!string.IsNullOrWhiteSpace(config.Token))
+                // Add authorization header if token provided - use "token" format for GitHub
+                if (!string.IsNullOrWhiteSpace(config.GitHub.Token))
                 {
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Token);
+                    string decryptedToken = GitConfigDecryptor.DecryptString(config.GitHub.Token);
+                    if (!string.IsNullOrWhiteSpace(decryptedToken))
+                    {
+                        request.Headers.Authorization = new AuthenticationHeaderValue("token", decryptedToken);
+                    }
                 }
 
                 // Call GitHub API
@@ -79,8 +98,11 @@ namespace SMTPServiceUpdater.Services
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.WriteLog($"GitHub API error: {response.StatusCode}", LogLevel.Error);
+                    _logger.WriteLog($"Unable to check for updates", LogLevel.Error);
                     return null;
                 }
+
+                _logger.WriteLog("Successfully connected to GitHub", LogLevel.Success);
 
                 // Parse response
                 string jsonResponse = await response.Content.ReadAsStringAsync();
@@ -95,23 +117,45 @@ namespace SMTPServiceUpdater.Services
                     return null;
                 }
 
-                _logger.WriteLog($"Latest release found: {release.Version}", LogLevel.Success);
+                _logger.WriteLog($"Latest GitHub version: {release.Version}", LogLevel.Success);
 
-                // Compare with current version
-                string currentVersion = VersionManager.GetCurrentVersion(_rootPath);
-                _logger.WriteLog($"Current version: {currentVersion}", LogLevel.Info);
+                // Log available assets
+                if (release.Assets.Count > 0)
+                {
+                    _logger.WriteLog($"Found {release.Assets.Count} asset(s) in release:", LogLevel.Info);
+                    foreach (var asset in release.Assets)
+                    {
+                        _logger.WriteLog($"  - {asset.Name} ({asset.Size / 1024:N0} KB)", LogLevel.Info);
+                    }
+                }
+                else
+                {
+                    _logger.WriteLog("WARNING: No assets found in this release!", LogLevel.Warning);
+                }
+
+                // Compare versions
 
                 if (VersionInfo.TryParse(release.Version, out VersionInfo? latestVersion) &&
                     VersionInfo.TryParse(currentVersion, out VersionInfo? currentVersionInfo))
                 {
+                    // Show version comparison
+                    _logger.WriteLog($"Version comparison: {currentVersion} vs {release.Version}", LogLevel.Info);
+                    
                     if (latestVersion > currentVersionInfo)
                     {
-                        _logger.WriteLog($"New version available: {release.Version}", LogLevel.Success);
+                        _logger.WriteLog($"UPDATE AVAILABLE: New version {release.Version} is available (current: {currentVersion})", LogLevel.Success);
                         return release;
+                    }
+                    else if (latestVersion == currentVersionInfo)
+                    {
+                        _logger.WriteLog($"You are running the latest version ({currentVersion})", LogLevel.Success);
+                        _logger.WriteLog($"No update needed", LogLevel.Info);
+                        return null;
                     }
                     else
                     {
-                        _logger.WriteLog($"Already running latest version - checked for update anyway", LogLevel.Info);
+                        _logger.WriteLog($"Current version ({currentVersion}) is newer than GitHub ({release.Version})", LogLevel.Warning);
+                        _logger.WriteLog($"You may be running a development version", LogLevel.Info);
                         return null;
                     }
                 }
@@ -147,16 +191,59 @@ namespace SMTPServiceUpdater.Services
 
             try
             {
-                // Find ZIP asset
-                GitHubAsset? zipAsset = release.Assets.Find(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+                // Find ZIP asset - look for version pattern in filename
+                GitHubAsset? zipAsset = null;
+                
+                // Try multiple naming patterns:
+                // 1. Exact version match: "4.2.3.zip"
+                // 2. With v prefix: "v4.2.3.zip"
+                // 3. Contains version: "SMTP-Service-4.2.3.zip"
+                string versionNumber = release.Version; // e.g., "4.2.3"
+                string versionWithV = $"v{versionNumber}"; // e.g., "v4.2.3"
+                
+                zipAsset = release.Assets.Find(a => 
+                    a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
+                    (a.Name.Equals($"{versionNumber}.zip", StringComparison.OrdinalIgnoreCase) ||
+                     a.Name.Equals($"{versionWithV}.zip", StringComparison.OrdinalIgnoreCase) ||
+                     a.Name.Contains(versionNumber, StringComparison.OrdinalIgnoreCase)));
+                
+                // If still not found, just get any ZIP file
+                if (zipAsset == null)
+                {
+                    zipAsset = release.Assets.Find(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+                }
                 
                 if (zipAsset == null)
                 {
                     _logger.WriteLog("No ZIP file found in release assets", LogLevel.Error);
+                    _logger.WriteLog($"Looking for version: {release.Version}", LogLevel.Error);
+                    
+                    if (release.Assets.Count > 0)
+                    {
+                        _logger.WriteLog($"Available assets ({release.Assets.Count}):", LogLevel.Info);
+                        foreach (var asset in release.Assets)
+                        {
+                            _logger.WriteLog($"  - {asset.Name}", LogLevel.Info);
+                        }
+                    }
+                    else
+                    {
+                        _logger.WriteLog("No assets found in this release", LogLevel.Warning);
+                    }
+                    
                     return null;
                 }
 
                 _logger.WriteLog($"Downloading: {zipAsset.Name} ({zipAsset.Size / 1024:N0} KB)", LogLevel.Info);
+                _logger.WriteLog($"Asset ID: {zipAsset.Id}", LogLevel.Info);
+
+                // Build API URL for authenticated download (required for private repos)
+                // GitHub requires using the API URL with asset ID, not the browser download URL
+                string owner = GitConfigDecryptor.DecryptString(_cachedConfig!.GitHub!.RepoOwner);
+                string repo = GitConfigDecryptor.DecryptString(_cachedConfig.GitHub.RepoName);
+                string apiDownloadUrl = $"https://api.github.com/repos/{owner}/{repo}/releases/assets/{zipAsset.Id}";
+                
+                _logger.WriteLog($"Download URL: {apiDownloadUrl}", LogLevel.Info);
 
                 // Ensure updates directory exists
                 string updatesDir = Path.Combine(_rootPath, "updates");
@@ -185,9 +272,30 @@ namespace SMTPServiceUpdater.Services
                 }
 
                 // Download file with progress
-                using (HttpResponseMessage response = await _httpClient.GetAsync(zipAsset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead))
+                var downloadRequest = new HttpRequestMessage(HttpMethod.Get, apiDownloadUrl);
+                
+                // Add required Accept header for GitHub release assets
+                downloadRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+                
+                // Add authentication - use "token" format for GitHub (not "Bearer")
+                if (!string.IsNullOrWhiteSpace(_cachedConfig?.GitHub?.Token))
                 {
-                    response.EnsureSuccessStatusCode();
+                    string decryptedToken = GitConfigDecryptor.DecryptString(_cachedConfig.GitHub.Token);
+                    if (!string.IsNullOrWhiteSpace(decryptedToken))
+                    {
+                        downloadRequest.Headers.Authorization = new AuthenticationHeaderValue("token", decryptedToken);
+                        _logger.WriteLog("Using authenticated download (private repository)", LogLevel.Info);
+                    }
+                }
+                
+                using (HttpResponseMessage response = await _httpClient.SendAsync(downloadRequest, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.WriteLog($"Download failed: {response.StatusCode} - {response.ReasonPhrase}", LogLevel.Error);
+                        _logger.WriteLog($"URL attempted: {apiDownloadUrl}", LogLevel.Error);
+                        return null;
+                    }
 
                     long? totalBytes = response.Content.Headers.ContentLength;
                     
@@ -197,22 +305,59 @@ namespace SMTPServiceUpdater.Services
                         byte[] buffer = new byte[8192];
                         long totalBytesRead = 0;
                         int bytesRead;
+                        int lastReportedPercent = 0;
+
+                        _logger.WriteLog("Download started", LogLevel.Info);
 
                         while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                         {
                             await fileStream.WriteAsync(buffer, 0, bytesRead);
                             totalBytesRead += bytesRead;
 
-                            // Report progress
+                            // Report progress at 25%, 50%, 75%, and 100%
                             if (progress != null && totalBytes.HasValue)
                             {
-                                progress.Report(new DownloadProgress
+                                int currentPercent = (int)((totalBytesRead * 100) / totalBytes.Value);
+                                
+                                // Check for milestone percentages
+                                if ((currentPercent >= 25 && lastReportedPercent < 25) ||
+                                    (currentPercent >= 50 && lastReportedPercent < 50) ||
+                                    (currentPercent >= 75 && lastReportedPercent < 75) ||
+                                    (currentPercent >= 100 && lastReportedPercent < 100))
                                 {
-                                    BytesDownloaded = totalBytesRead,
-                                    TotalBytes = totalBytes.Value,
-                                    Message = $"Downloaded {totalBytesRead / 1024:N0} KB of {totalBytes.Value / 1024:N0} KB"
-                                });
+                                    lastReportedPercent = currentPercent;
+                                    
+                                    var progressReport = new DownloadProgress
+                                    {
+                                        BytesDownloaded = totalBytesRead,
+                                        TotalBytes = totalBytes.Value,
+                                        Message = $"Downloaded {totalBytesRead / 1024:N0} KB of {totalBytes.Value / 1024:N0} KB ({currentPercent}%)"
+                                    };
+                                    
+                                    progress.Report(progressReport);
+                                }
+                                else
+                                {
+                                    // Still update the progress bar continuously, just don't include a message
+                                    progress.Report(new DownloadProgress
+                                    {
+                                        BytesDownloaded = totalBytesRead,
+                                        TotalBytes = totalBytes.Value,
+                                        Message = string.Empty // No message for non-milestone updates
+                                    });
+                                }
                             }
+                        }
+                        
+                        // Report final 100% if not already reported
+                        if (progress != null && totalBytes.HasValue && lastReportedPercent < 100)
+                        {
+                            progress.Report(new DownloadProgress
+                            {
+                                BytesDownloaded = totalBytes.Value,
+                                TotalBytes = totalBytes.Value,
+                                Message = $"Downloaded {totalBytes.Value / 1024:N0} KB of {totalBytes.Value / 1024:N0} KB (100%)"
+                            });
                         }
                     }
                 }

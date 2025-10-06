@@ -26,13 +26,79 @@ namespace SMTPServiceUpdater.UI
         private TabPage? configTab;
         private RichTextBox? logTextBox;
         private Label? statusLabel;
+        private ProgressBar? downloadProgressBar;
+        private Label? progressLabel;
         private Button? downloadButton;
         private Button? installButton;
+        private Button? cleanButton;
         private Button? closeButton;
+        private LinkLabel? logFileLinkLabel;
+        private string? _currentLogFilePath;
 
         // Controls - Configuration Tab
         private Panel? configPanel;
         private Label? configTitleLabel;
+
+        /// <summary>
+        /// Handles the log file link click event.
+        /// Opens the log file in Notepad.
+        /// </summary>
+        private void OnLogFileLinkClicked(object? sender, LinkLabelLinkClickedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_currentLogFilePath) || !System.IO.File.Exists(_currentLogFilePath))
+            {
+                MessageBox.Show("Log file not found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start("notepad.exe", _currentLogFilePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open log file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Updates the download progress bar.
+        /// Thread-safe - can be called from background threads.
+        /// </summary>
+        private void UpdateDownloadProgress(DownloadProgress progress)
+        {
+            if (downloadProgressBar == null || progressLabel == null) return;
+
+            if (downloadProgressBar.InvokeRequired)
+            {
+                downloadProgressBar.Invoke(new Action(() => UpdateDownloadProgress(progress)));
+                return;
+            }
+
+            downloadProgressBar.Visible = true;
+            progressLabel.Visible = true;
+            downloadProgressBar.Value = Math.Min(progress.PercentComplete, 100);
+            progressLabel.Text = progress.Message;
+        }
+
+        /// <summary>
+        /// Hides the download progress bar.
+        /// </summary>
+        private void HideDownloadProgress()
+        {
+            if (downloadProgressBar == null || progressLabel == null) return;
+
+            if (downloadProgressBar.InvokeRequired)
+            {
+                downloadProgressBar.Invoke(new Action(HideDownloadProgress));
+                return;
+            }
+
+            downloadProgressBar.Visible = false;
+            downloadProgressBar.Value = 0;
+            progressLabel.Visible = false;
+            progressLabel.Text = "";
+        }
 
         /// <summary>
         /// Initializes a new instance of the UpdaterMainForm.
@@ -112,6 +178,30 @@ namespace SMTPServiceUpdater.UI
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
+            // Create progress bar
+            downloadProgressBar = new ProgressBar
+            {
+                Dock = DockStyle.Top,
+                Height = 25,
+                Minimum = 0,
+                Maximum = 100,
+                Value = 0,
+                Style = ProgressBarStyle.Continuous,
+                Visible = false
+            };
+
+            // Create progress label
+            progressLabel = new Label
+            {
+                Text = "",
+                Dock = DockStyle.Top,
+                Height = 20,
+                Font = new Font("Segoe UI", 9),
+                ForeColor = Color.DarkGray,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Visible = false
+            };
+
             // Create log text box
             logTextBox = new RichTextBox
             {
@@ -126,9 +216,20 @@ namespace SMTPServiceUpdater.UI
             var buttonPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 50,
+                Height = 80,
                 Padding = new Padding(0, 10, 0, 0)
             };
+
+            // Create log file link label
+            logFileLinkLabel = new LinkLabel
+            {
+                Text = "View log file",
+                AutoSize = true,
+                Location = new Point(10, 45),
+                Font = new Font("Segoe UI", 9),
+                Visible = false
+            };
+            logFileLinkLabel.LinkClicked += OnLogFileLinkClicked;
 
             // Create Download button
             downloadButton = new Button
@@ -152,24 +253,39 @@ namespace SMTPServiceUpdater.UI
             };
             installButton.Click += OnInstallButtonClick;
 
+            // Create Clean button
+            cleanButton = new Button
+            {
+                Text = "Clean Updates",
+                Size = new Size(130, 35),
+                Location = new Point(270, 5),
+                Enabled = true,
+                Font = new Font("Segoe UI", 9)
+            };
+            cleanButton.Click += OnCleanButtonClick;
+
             // Create Close button
             closeButton = new Button
             {
                 Text = "Close",
                 Size = new Size(100, 35),
-                Location = new Point(270, 5),
-                Enabled = false,
+                Location = new Point(410, 5),
+                Enabled = true,
                 Font = new Font("Segoe UI", 10)
             };
             closeButton.Click += OnCloseButtonClick;
 
             // Add controls to button panel
+            buttonPanel.Controls.Add(logFileLinkLabel);
             buttonPanel.Controls.Add(downloadButton);
             buttonPanel.Controls.Add(installButton);
+            buttonPanel.Controls.Add(cleanButton);
             buttonPanel.Controls.Add(closeButton);
 
             // Add controls to main panel
             mainPanel.Controls.Add(logTextBox);
+            mainPanel.Controls.Add(progressLabel);
+            mainPanel.Controls.Add(downloadProgressBar);
             mainPanel.Controls.Add(statusLabel);
             mainPanel.Controls.Add(buttonPanel);
 
@@ -251,19 +367,33 @@ namespace SMTPServiceUpdater.UI
                     AddConfigLabel($"Auto Update Enabled: {autoSettings.AutoUpdateEnabled}", yPosition);
                     yPosition += lineHeight;
 
-                    AddConfigLabel($"Check Frequency: {autoSettings.CheckFrequencyText}", yPosition);
-                    yPosition += lineHeight;
-
-                    AddConfigLabel($"Check Time: {autoSettings.CheckTime}", yPosition);
-                    yPosition += lineHeight;
-
-                    if (autoSettings.CheckFrequency == 1) // Weekly
+                    if (autoSettings.AutoUpdateEnabled)
                     {
-                        AddConfigLabel($"Weekly Check Day: {autoSettings.WeeklyCheckDayText}", yPosition);
+                        AddConfigLabel($"Update Schedule:", yPosition, true);
                         yPosition += lineHeight;
+                        
+                        AddConfigLabel($"  Check Frequency: {autoSettings.CheckFrequencyText}", yPosition);
+                        yPosition += lineHeight;
+
+                        AddConfigLabel($"  Check Time: {autoSettings.CheckTime}", yPosition);
+                        yPosition += lineHeight;
+
+                        if (autoSettings.CheckFrequency == 1) // Weekly
+                        {
+                            AddConfigLabel($"  Weekly Check Day: {autoSettings.WeeklyCheckDayText}", yPosition);
+                            yPosition += lineHeight;
+                        }
+
+                        AddConfigLabel($"  Check on Startup: {autoSettings.CheckOnStartup}", yPosition);
+                        yPosition += lineHeight + 10;
+                    }
+                    else
+                    {
+                        AddConfigLabel($"  Scheduled updates are disabled", yPosition);
+                        yPosition += lineHeight + 10;
                     }
 
-                    AddConfigLabel($"Check on Startup: {autoSettings.CheckOnStartup}", yPosition);
+                    AddConfigLabel("Update History", yPosition, true);
                     yPosition += lineHeight;
 
                     AddConfigLabel($"Last Check Date: {autoSettings.LastCheckDate ?? "Never"}", yPosition);
@@ -381,12 +511,33 @@ namespace SMTPServiceUpdater.UI
                 downloadButton.Enabled = false;
             }
 
+            if (closeButton != null)
+            {
+                closeButton.Enabled = false;
+            }
+
             try
             {
                 AppendLog(new LogMessage("Starting download check...", LogLevel.Info));
 
                 // Create GitHub downloader
-                var downloader = new GitHubDownloader(new UpdateLogger(_rootPath), _rootPath);
+                var logger = new UpdateLogger(_rootPath);
+                
+                // Store log file path and show link
+                _currentLogFilePath = logger.LogFilePath;
+                if (logFileLinkLabel != null)
+                {
+                    logFileLinkLabel.Text = $"View log file: {System.IO.Path.GetFileName(_currentLogFilePath)}";
+                    logFileLinkLabel.Visible = true;
+                }
+                
+                // Subscribe to logger events to mirror logs in UI
+                logger.LogMessageReceived += (sender, logMessage) =>
+                {
+                    AppendLog(logMessage);
+                };
+                
+                var downloader = new GitHubDownloader(logger, _rootPath);
 
                 // Check for updates
                 GitHubRelease? release = await downloader.CheckForUpdateAsync();
@@ -395,20 +546,45 @@ namespace SMTPServiceUpdater.UI
                 {
                     AppendLog(new LogMessage("No updates available or already running latest version", LogLevel.Info));
                     
+                    // Get and display current version info
+                    string currentVer = downloader.GetCurrentVersion();
+                    AppendLog(new LogMessage($"Current installed version: {currentVer}", LogLevel.Info));
+                    
                     if (downloadButton != null)
                     {
                         downloadButton.Enabled = true;
+                    }
+
+                    if (closeButton != null)
+                    {
+                        closeButton.Enabled = true;
                     }
                     return;
                 }
 
                 _availableRelease = release;
                 AppendLog(new LogMessage($"Update available: {release.Version}", LogLevel.Success));
+                AppendLog(new LogMessage($"GitHub tag: {release.TagName}", LogLevel.Info));
 
-                // Create progress reporter
+                // Create progress reporter - track milestone logging
+                int lastLoggedPercent = 0;
                 var progress = new Progress<DownloadProgress>(p =>
                 {
-                    AppendLog(new LogMessage(p.Message, LogLevel.Info));
+                    UpdateDownloadProgress(p);
+                    
+                    // Only log if there's a message (milestone percentages only)
+                    if (!string.IsNullOrEmpty(p.Message))
+                    {
+                        int currentPercent = p.PercentComplete;
+                        if ((currentPercent >= 25 && lastLoggedPercent < 25) ||
+                            (currentPercent >= 50 && lastLoggedPercent < 50) ||
+                            (currentPercent >= 75 && lastLoggedPercent < 75) ||
+                            (currentPercent >= 100 && lastLoggedPercent < 100))
+                        {
+                            lastLoggedPercent = currentPercent;
+                            AppendLog(new LogMessage(p.Message, LogLevel.Info));
+                        }
+                    }
                 });
 
                 // Download update
@@ -416,8 +592,23 @@ namespace SMTPServiceUpdater.UI
 
                 if (downloadedPath != null)
                 {
+                    HideDownloadProgress();
                     _downloadedVersion = release.Version;
-                    AppendLog(new LogMessage($"Download complete: {downloadedPath}", LogLevel.Success));
+                    AppendLog(new LogMessage($"Downloaded version: {_downloadedVersion}", LogLevel.Info));
+                    AppendLog(new LogMessage($"Saved as: {System.IO.Path.GetFileName(downloadedPath)}", LogLevel.Info));
+                    
+                    // Verify the file exists and matches expected naming
+                    string expectedPath = System.IO.Path.Combine(_rootPath, "updates", $"{_downloadedVersion}.zip");
+                    if (downloadedPath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        AppendLog(new LogMessage("File location verified - ready to install", LogLevel.Success));
+                    }
+                    else
+                    {
+                        AppendLog(new LogMessage($"WARNING: Downloaded path mismatch", LogLevel.Warning));
+                        AppendLog(new LogMessage($"Expected: {expectedPath}", LogLevel.Warning));
+                        AppendLog(new LogMessage($"Actual: {downloadedPath}", LogLevel.Warning));
+                    }
                     
                     if (statusLabel != null)
                     {
@@ -429,24 +620,41 @@ namespace SMTPServiceUpdater.UI
                     {
                         installButton.Enabled = true;
                     }
+
+                    if (closeButton != null)
+                    {
+                        closeButton.Enabled = true;
+                    }
                 }
                 else
                 {
+                    HideDownloadProgress();
                     AppendLog(new LogMessage("Download failed - check log for details", LogLevel.Error));
                     
                     if (downloadButton != null)
                     {
                         downloadButton.Enabled = true;
                     }
+
+                    if (closeButton != null)
+                    {
+                        closeButton.Enabled = true;
+                    }
                 }
             }
             catch (Exception ex)
             {
+                HideDownloadProgress();
                 AppendLog(new LogMessage($"Download error: {ex.Message}", LogLevel.Critical));
                 
                 if (downloadButton != null)
                 {
                     downloadButton.Enabled = true;
+                }
+
+                if (closeButton != null)
+                {
+                    closeButton.Enabled = true;
                 }
             }
         }
@@ -467,14 +675,73 @@ namespace SMTPServiceUpdater.UI
                 downloadButton.Enabled = false;
             }
 
+            if (closeButton != null)
+            {
+                closeButton.Enabled = false;
+            }
+
             try
             {
+                // Verify we have a version to install
+                if (string.IsNullOrWhiteSpace(_downloadedVersion))
+                {
+                    AppendLog(new LogMessage("ERROR: No version available for installation", LogLevel.Error));
+                    AppendLog(new LogMessage("Please click Download first", LogLevel.Warning));
+                    
+                    if (installButton != null)
+                    {
+                        installButton.Enabled = false;
+                    }
+                    
+                    if (downloadButton != null)
+                    {
+                        downloadButton.Enabled = true;
+                    }
+
+                    if (closeButton != null)
+                    {
+                        closeButton.Enabled = true;
+                    }
+                    
+                    return;
+                }
+
+                // Verify the ZIP file exists before starting installation
+                string zipPath = System.IO.Path.Combine(_rootPath, "updates", $"{_downloadedVersion}.zip");
+                if (!System.IO.File.Exists(zipPath))
+                {
+                    AppendLog(new LogMessage($"ERROR: Update file not found: {_downloadedVersion}.zip", LogLevel.Error));
+                    AppendLog(new LogMessage("The downloaded file may have been moved or deleted", LogLevel.Warning));
+                    AppendLog(new LogMessage("Please download the update again", LogLevel.Warning));
+                    
+                    if (installButton != null)
+                    {
+                        installButton.Enabled = false;
+                    }
+                    
+                    if (downloadButton != null)
+                    {
+                        downloadButton.Enabled = true;
+                    }
+
+                    if (closeButton != null)
+                    {
+                        closeButton.Enabled = true;
+                    }
+                    
+                    _downloadedVersion = null;
+                    return;
+                }
+
+                AppendLog(new LogMessage($"Installing version: {_downloadedVersion}", LogLevel.Info));
+                AppendLog(new LogMessage($"Update package: {zipPath}", LogLevel.Info));
+
                 // Create progress reporter
                 var progress = new Progress<LogMessage>(AppendLog);
 
                 // Create installer and run update
                 var installer = new UpdateInstaller(_rootPath, progress);
-                var result = await installer.RunAsync(_downloadedVersion ?? string.Empty, _noRestart);
+                var result = await installer.RunAsync(_downloadedVersion, _noRestart);
 
                 // Update complete
                 _updateCompleted = true;
@@ -533,7 +800,7 @@ namespace SMTPServiceUpdater.UI
 
             if (closeButton != null)
             {
-                closeButton.Enabled = false;
+                closeButton.Enabled = true;
             }
 
             // Display initial message in log
@@ -555,6 +822,79 @@ namespace SMTPServiceUpdater.UI
         private void OnInstallButtonClick(object? sender, EventArgs e)
         {
             InstallUpdateAsync();
+        }
+
+        /// <summary>
+        /// Handles the Clean Updates button click event.
+        /// Purges all files in the updates folder.
+        /// </summary>
+        private void OnCleanButtonClick(object? sender, EventArgs e)
+        {
+            try
+            {
+                string updatesDir = System.IO.Path.Combine(_rootPath, "updates");
+                
+                if (!System.IO.Directory.Exists(updatesDir))
+                {
+                    AppendLog(new LogMessage("Updates folder does not exist - nothing to clean", LogLevel.Info));
+                    return;
+                }
+
+                var files = System.IO.Directory.GetFiles(updatesDir);
+                
+                if (files.Length == 0)
+                {
+                    AppendLog(new LogMessage("Updates folder is already empty", LogLevel.Info));
+                    return;
+                }
+
+                var result = MessageBox.Show(
+                    $"This will delete {files.Length} file(s) from the updates folder.\n\nAre you sure?",
+                    "Confirm Clean Updates",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Yes)
+                {
+                    int deletedCount = 0;
+                    int errorCount = 0;
+
+                    foreach (var file in files)
+                    {
+                        try
+                        {
+                            System.IO.File.Delete(file);
+                            deletedCount++;
+                            AppendLog(new LogMessage($"Deleted: {System.IO.Path.GetFileName(file)}", LogLevel.Info));
+                        }
+                        catch (Exception ex)
+                        {
+                            errorCount++;
+                            AppendLog(new LogMessage($"Failed to delete {System.IO.Path.GetFileName(file)}: {ex.Message}", LogLevel.Error));
+                        }
+                    }
+
+                    if (errorCount == 0)
+                    {
+                        AppendLog(new LogMessage($"Successfully cleaned updates folder - {deletedCount} file(s) deleted", LogLevel.Success));
+                    }
+                    else
+                    {
+                        AppendLog(new LogMessage($"Cleaned with errors - {deletedCount} deleted, {errorCount} failed", LogLevel.Warning));
+                    }
+
+                    // Clear downloaded version since we just deleted it
+                    _downloadedVersion = null;
+                    if (installButton != null)
+                    {
+                        installButton.Enabled = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog(new LogMessage($"Error cleaning updates folder: {ex.Message}", LogLevel.Error));
+            }
         }
 
         /// <summary>

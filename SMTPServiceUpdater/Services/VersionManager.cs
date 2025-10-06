@@ -86,7 +86,7 @@ public class VersionManager
             {
                 var versionText = File.ReadAllText(versionFilePath).Trim();
                 
-                // Try to parse the version to validate it
+                // Try to parse the version to validate it (this will strip build metadata like +commit)
                 if (VersionInfo.TryParse(versionText, out var version) && version != null)
                 {
                     return version.ToString();
@@ -110,13 +110,21 @@ public class VersionManager
 
                 if (!string.IsNullOrWhiteSpace(fileVersion))
                 {
-                    // FileVersion might be in format "4.0.0.0" - take first 3 parts
+                    // FileVersion might include build metadata (e.g., "4.2.1+68c0b3531c143")
+                    // or be in format "4.0.0.0" - the Parse method will handle both
+                    // Try parsing the full version first (handles build metadata)
+                    if (VersionInfo.TryParse(fileVersion, out var version) && version != null)
+                    {
+                        return version.ToString();
+                    }
+                    
+                    // Fallback: Try taking first 3 parts if it has 4 parts (e.g., "4.0.0.0")
                     var parts = fileVersion.Split('.');
                     if (parts.Length >= 3)
                     {
                         var versionString = $"{parts[0]}.{parts[1]}.{parts[2]}";
                         
-                        if (VersionInfo.TryParse(versionString, out var version) && version != null)
+                        if (VersionInfo.TryParse(versionString, out version) && version != null)
                         {
                             return version.ToString();
                         }

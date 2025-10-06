@@ -44,6 +44,12 @@ namespace SMTPServiceUpdater.Models
     public class GitHubAsset
     {
         /// <summary>
+        /// Asset ID (required for API downloads)
+        /// </summary>
+        [JsonPropertyName("id")]
+        public long Id { get; set; }
+
+        /// <summary>
         /// The filename of the asset
         /// </summary>
         [JsonPropertyName("name")]
@@ -92,25 +98,68 @@ namespace SMTPServiceUpdater.Models
 
     /// <summary>
     /// Configuration for GitHub repository access.
+    /// Root configuration with nested GitHub settings.
     /// </summary>
     public class GitHubConfig
     {
         /// <summary>
-        /// GitHub repository owner/organization
+        /// Nested GitHub settings object
         /// </summary>
-        [JsonPropertyName("Owner")]
-        public string Owner { get; set; } = string.Empty;
+        [JsonPropertyName("GitHub")]
+        public GitHubSettings? GitHub { get; set; }
 
         /// <summary>
-        /// GitHub repository name
+        /// Update settings
         /// </summary>
-        [JsonPropertyName("Repository")]
-        public string Repository { get; set; } = string.Empty;
+        [JsonPropertyName("UpdateSettings")]
+        public UpdateConfigSettings? UpdateSettings { get; set; }
+    }
+
+    /// <summary>
+    /// GitHub repository settings (nested within GitHubConfig)
+    /// </summary>
+    public class GitHubSettings
+    {
+        /// <summary>
+        /// Encrypted GitHub repository owner/organization
+        /// </summary>
+        [JsonPropertyName("RepoOwner")]
+        public string RepoOwner { get; set; } = string.Empty;
 
         /// <summary>
-        /// Personal access token (optional for public repos)
+        /// Encrypted GitHub repository name
+        /// </summary>
+        [JsonPropertyName("RepoName")]
+        public string RepoName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Encrypted personal access token (optional for public repos)
         /// </summary>
         [JsonPropertyName("Token")]
         public string? Token { get; set; }
+
+        /// <summary>
+        /// Update check URL template
+        /// </summary>
+        [JsonPropertyName("UpdateCheckUrl")]
+        public string? UpdateCheckUrl { get; set; }
+    }
+
+    /// <summary>
+    /// Update configuration settings
+    /// </summary>
+    public class UpdateConfigSettings
+    {
+        [JsonPropertyName("CheckOnStartup")]
+        public bool CheckOnStartup { get; set; }
+
+        [JsonPropertyName("ShowPreReleases")]
+        public bool ShowPreReleases { get; set; }
+
+        [JsonPropertyName("AutoDownload")]
+        public bool AutoDownload { get; set; }
+
+        [JsonPropertyName("LastCheckDate")]
+        public DateTime? LastCheckDate { get; set; }
     }
 }
