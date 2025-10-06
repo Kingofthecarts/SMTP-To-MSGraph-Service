@@ -65,7 +65,7 @@ namespace SMTPServiceUpdater.Services
                 try
                 {
                 // STEP 1: Initialize logger
-                _logger.WriteHeader("SMTP SERVICE UPDATER v4.2.0");
+                _logger.WriteHeader("SMTP SERVICE UPDATER v4.2.2");
                 _logger.WriteLog($"Started at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}", LogLevel.Info);
                 _logger.WriteLog($"Root path: {_rootPath}", LogLevel.Info);
                 _logger.WriteSeparator();

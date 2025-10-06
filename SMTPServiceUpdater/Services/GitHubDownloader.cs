@@ -31,7 +31,7 @@ namespace SMTPServiceUpdater.Services
             // Configure HttpClient (only once)
             if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
             {
-                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SMTPServiceUpdater/4.2.0");
+                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SMTPServiceUpdater/4.2.2");
             }
         }
 
@@ -111,7 +111,7 @@ namespace SMTPServiceUpdater.Services
                     }
                     else
                     {
-                        _logger.WriteLog("Already running latest version", LogLevel.Info);
+                        _logger.WriteLog($"Already running latest version - checked for update anyway", LogLevel.Info);
                         return null;
                     }
                 }

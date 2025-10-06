@@ -1,5 +1,19 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 4.2.2 - October 5, 2025
+
+### 🔧 Improvements
+
+**Update Checker Logging**
+- Update checker now logs when running the latest version and still checking for updates
+- Log message: "Already running latest version - checked for update anyway"
+- Provides clarity that the update check ran even when no update is available
+
+### Impact
+Better visibility into update check behavior. Users can confirm that update checks are happening even when already on the latest version.
+
+---
+
 ## VERSION 4.2.1 - October 5, 2025
 
 ### 🐛 Bug Fixes
