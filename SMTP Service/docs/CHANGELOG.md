@@ -1,5 +1,91 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 4.2.7 - October 5, 2025
+
+### 🔧 Improvements
+
+**SMTP Service Updater - Unified Update Logging**
+- Unified update logging across self-updates - complete process now in single log file
+- GUI resume mode after self-update preserves installation state and log continuity
+- Bridge script now logs operations to same file with clear "RESUMED AFTER SELF-UPDATE" separator
+- Added --mode and --log-file command-line parameters for advanced resume control
+
+### Impact
+Users can now see the entire update process including self-updates in one continuous log file. GUI automatically resumes where it left off after self-update with Install button pre-enabled.
+
+---
+
+## VERSION 4.2.6 - October 5, 2025
+
+### 🔧 Improvements
+
+**SMTP Service Updater - UI Enhancements**
+- Added "Clean Logs" button to remove update log files separately from update packages
+- Configuration tab now displays scheduled update settings from config file
+
+### Impact
+Better control over log file management. Users can now see their scheduled update configuration at a glance in the Configuration tab.
+
+---
+
+## VERSION 4.2.5 - October 5, 2025
+
+### 🔧 Improvements
+
+**SMTP Service Updater - Self-Update Process**
+- Fixed application not exiting during self-update, causing file lock conflicts
+- Increased bridge script wait time to 5 seconds for reliable file lock release
+- Bridge script now preserves GUI/auto mode when relaunching after self-update
+- Simplified --resume flag to auto-detect version (no longer requires version parameter)
+
+**SMTP Service Updater - Service Management**
+- Added Windows Service detection and proper shutdown before process termination
+- Enhanced SMTP Service stopping: checks Windows Service first, then kills lingering processes
+- Service controller now uses ServiceController API for graceful Windows Service shutdown
+
+### Impact
+Self-updates now complete reliably without file locking issues. Windows Service installations are handled properly with graceful shutdown before updates.
+
+---
+
+## VERSION 4.2.4 - October 5, 2025
+
+### 🔧 Improvements
+
+**SMTP Service Updater**
+- Fixed self-update detection to occur before file operations, preventing "file in use" errors
+- Self-update files now excluded from normal operations when bridge script is used
+- Updated file operation logging to show full destination paths instead of relative paths
+- Improved error messages with complete file paths for better troubleshooting
+- Added centralized version control via AppVersion class for easier version management
+- Updated GUI to display both updater version and SMTP Service version in title bar and progress tab
+- Fixed application not exiting during self-update, causing file lock conflicts
+- Increased bridge script wait time to 5 seconds for reliable file lock release
+- Bridge script now preserves GUI/auto mode when relaunching after self-update
+- Simplified --resume flag to auto-detect version (no longer requires version parameter)
+- Added Windows Service detection and proper shutdown before process termination
+- Enhanced SMTP Service stopping: checks Windows Service first, then kills lingering processes
+
+### Impact
+Self-updates now work reliably without file locking issues. Better troubleshooting with full paths in logs and version information clearly displayed in the UI.
+
+---
+
+## VERSION 4.2.3 - October 5, 2025
+
+### 🔧 Improvements
+
+**SMTP Service Updater UI**
+- Fixed download progress logging to show only milestone percentages (25%, 50%, 75%, 100%)
+- Added "Clean Updates" button to purge downloaded update files from updates folder
+- Fixed duplicate "Download complete" log messages
+- Ensured 100% progress appears after 75% milestone for correct ordering
+
+### Impact
+Cleaner update logs with less noise. Users can now easily clean up old update files to free disk space.
+
+---
+
 ## VERSION 4.2.2 - October 5, 2025
 
 ### 🔧 Improvements

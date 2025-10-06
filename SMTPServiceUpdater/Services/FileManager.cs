@@ -324,10 +324,12 @@ public class FileManager
             {
                 var backupsToDelete = backupDirs.Skip(maxBackups).ToList();
 
+                _logger.WriteLog($"Cleaning up {backupsToDelete.Count} old backup(s):", LogLevel.Info);
                 foreach (var backup in backupsToDelete)
                 {
-                    _logger.WriteLog($"Deleting old backup: {backup.Name}", LogLevel.Info);
+                    _logger.WriteLog($"  Deleting: {backup.FullName}", LogLevel.Warning);
                     Directory.Delete(backup.FullName, recursive: true);
+                    _logger.WriteLog($"  Deleted: {backup.Name}", LogLevel.Success);
                 }
 
                 _logger.WriteLog($"Deleted {backupsToDelete.Count} old backup(s)", LogLevel.Success);
@@ -373,7 +375,7 @@ public class FileManager
 
                         // Copy file
                         File.Copy(operation.SourcePath, operation.DestPath, overwrite: true);
-                        _logger.WriteLog($"[{operation.Operation}] {operation.Path}", LogLevel.Info);
+                        _logger.WriteLog($"[{operation.Operation}] {operation.DestPath}", LogLevel.Info);
                         successCount++;
                         break;
 
@@ -381,7 +383,7 @@ public class FileManager
                         if (File.Exists(operation.DestPath))
                         {
                             File.Delete(operation.DestPath);
-                            _logger.WriteLog($"[DELETE] {operation.Path}", LogLevel.Warning);
+                            _logger.WriteLog($"[DELETE] {operation.DestPath}", LogLevel.Warning);
                             successCount++;
                         }
                         break;
@@ -394,7 +396,7 @@ public class FileManager
             }
             catch (Exception ex)
             {
-                _logger.WriteLog($"Failed to apply operation [{operation.Operation}] {operation.Path}: {ex.Message}", LogLevel.Error);
+                _logger.WriteLog($"Failed to apply operation [{operation.Operation}] {operation.DestPath}: {ex.Message}", LogLevel.Error);
                 errorCount++;
             }
         }

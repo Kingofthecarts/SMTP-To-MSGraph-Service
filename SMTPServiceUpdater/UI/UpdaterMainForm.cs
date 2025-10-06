@@ -31,6 +31,7 @@ namespace SMTPServiceUpdater.UI
         private Button? downloadButton;
         private Button? installButton;
         private Button? cleanButton;
+        private Button? cleanLogsButton;
         private Button? closeButton;
         private LinkLabel? logFileLinkLabel;
         private string? _currentLogFilePath;
@@ -117,12 +118,39 @@ namespace SMTPServiceUpdater.UI
         }
 
         /// <summary>
+        /// Initializes a new instance of the UpdaterMainForm in resume mode.
+        /// </summary>
+        /// <param name="noRestart">If true, don't restart service after update</param>
+        /// <param name="rootPath">Root path where SMTP Service is installed</param>
+        /// <param name="resumeVersion">Version to resume installation for</param>
+        /// <param name="logFilePath">Existing log file path to continue logging to</param>
+        public UpdaterMainForm(bool noRestart, string rootPath, string? resumeVersion, string? logFilePath)
+        {
+            _noRestart = noRestart;
+            _rootPath = rootPath;
+            _updateCompleted = false;
+            _downloadedVersion = resumeVersion; // Pre-populate with resume version
+            _availableRelease = null;
+
+            InitializeComponent();
+            
+            // If we have a log file path, set it for continuation
+            if (!string.IsNullOrWhiteSpace(logFilePath))
+            {
+                _currentLogFilePath = logFilePath;
+            }
+        }
+
+        /// <summary>
         /// Initializes all UI components and configures the form.
         /// </summary>
         private void InitializeComponent()
         {
+            // Get current SMTP Service version
+            string smtpVersion = VersionManager.GetCurrentVersion(_rootPath);
+            
             // Form properties
-            this.Text = "SMTP Service Updater";
+            this.Text = $"SMTP Service Updater v{AppVersion.Version} - SMTP Service v{smtpVersion}";
             this.Size = new Size(900, 650);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -165,6 +193,20 @@ namespace SMTPServiceUpdater.UI
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(10)
+            };
+
+            // Get current SMTP Service version
+            string smtpVersion = VersionManager.GetCurrentVersion(_rootPath);
+
+            // Create version info label
+            var versionLabel = new Label
+            {
+                Text = $"Updater: v{AppVersion.Version}  |  SMTP Service: v{smtpVersion}",
+                Dock = DockStyle.Top,
+                Height = 25,
+                Font = new Font("Segoe UI", 9, FontStyle.Regular),
+                ForeColor = Color.DarkGray,
+                TextAlign = ContentAlignment.MiddleLeft
             };
 
             // Create status label
@@ -264,12 +306,23 @@ namespace SMTPServiceUpdater.UI
             };
             cleanButton.Click += OnCleanButtonClick;
 
+            // Create Clean Logs button
+            cleanLogsButton = new Button
+            {
+                Text = "Clean Logs",
+                Size = new Size(120, 35),
+                Location = new Point(410, 5),
+                Enabled = true,
+                Font = new Font("Segoe UI", 9)
+            };
+            cleanLogsButton.Click += OnCleanLogsButtonClick;
+
             // Create Close button
             closeButton = new Button
             {
                 Text = "Close",
                 Size = new Size(100, 35),
-                Location = new Point(410, 5),
+                Location = new Point(540, 5),
                 Enabled = true,
                 Font = new Font("Segoe UI", 10)
             };
@@ -280,6 +333,7 @@ namespace SMTPServiceUpdater.UI
             buttonPanel.Controls.Add(downloadButton);
             buttonPanel.Controls.Add(installButton);
             buttonPanel.Controls.Add(cleanButton);
+            buttonPanel.Controls.Add(cleanLogsButton);
             buttonPanel.Controls.Add(closeButton);
 
             // Add controls to main panel
@@ -287,6 +341,7 @@ namespace SMTPServiceUpdater.UI
             mainPanel.Controls.Add(progressLabel);
             mainPanel.Controls.Add(downloadProgressBar);
             mainPanel.Controls.Add(statusLabel);
+            mainPanel.Controls.Add(versionLabel);
             mainPanel.Controls.Add(buttonPanel);
 
             // Add main panel to tab
@@ -736,6 +791,32 @@ namespace SMTPServiceUpdater.UI
                 AppendLog(new LogMessage($"Installing version: {_downloadedVersion}", LogLevel.Info));
                 AppendLog(new LogMessage($"Update package: {zipPath}", LogLevel.Info));
 
+                // Create logger - use existing log if in resume mode, otherwise create new
+                UpdateLogger logger;
+                if (!string.IsNullOrWhiteSpace(_currentLogFilePath) && System.IO.File.Exists(_currentLogFilePath))
+                {
+                    // Resume mode - append to existing log
+                    logger = new UpdateLogger(_rootPath, _currentLogFilePath);
+                }
+                else
+                {
+                    // Normal mode - create new log
+                    logger = new UpdateLogger(_rootPath);
+                    _currentLogFilePath = logger.LogFilePath;
+                    
+                    if (logFileLinkLabel != null)
+                    {
+                        logFileLinkLabel.Text = $"View log file: {System.IO.Path.GetFileName(_currentLogFilePath)}";
+                        logFileLinkLabel.Visible = true;
+                    }
+                }
+
+                // Subscribe to logger events
+                logger.LogMessageReceived += (sender, logMessage) =>
+                {
+                    AppendLog(logMessage);
+                };
+
                 // Create progress reporter
                 var progress = new Progress<LogMessage>(AppendLog);
 
@@ -781,31 +862,72 @@ namespace SMTPServiceUpdater.UI
         /// <summary>
         /// Handles the form load event.
         /// Loads configuration - does NOT auto-start download.
+        /// In resume mode, enables Install button if version is pre-populated.
         /// </summary>
         private void OnFormLoad(object? sender, EventArgs e)
         {
             // Load configuration display
             LoadConfiguration();
 
-            // Set initial UI state - do NOT auto-start
-            if (downloadButton != null)
-            {
-                downloadButton.Enabled = true;
-            }
+            // Check if we're in resume mode (version pre-populated)
+            bool isResumeMode = !string.IsNullOrWhiteSpace(_downloadedVersion);
 
-            if (installButton != null)
+            if (isResumeMode)
             {
-                installButton.Enabled = false;
-            }
+                // Resume mode - enable install button
+                AppendLog(new LogMessage("Resumed after self-update", LogLevel.Info));
+                AppendLog(new LogMessage($"Ready to install version {_downloadedVersion}", LogLevel.Info));
+                
+                if (downloadButton != null)
+                {
+                    downloadButton.Enabled = false; // Don't allow re-download in resume mode
+                }
 
-            if (closeButton != null)
+                if (installButton != null)
+                {
+                    installButton.Enabled = true;
+                }
+
+                if (closeButton != null)
+                {
+                    closeButton.Enabled = true;
+                }
+
+                if (statusLabel != null)
+                {
+                    statusLabel.Text = $"Ready to install version {_downloadedVersion}";
+                    statusLabel.ForeColor = Color.Green;
+                }
+
+                // Show log file link if we have a log path
+                if (!string.IsNullOrEmpty(_currentLogFilePath) && logFileLinkLabel != null)
+                {
+                    logFileLinkLabel.Text = $"View log file: {System.IO.Path.GetFileName(_currentLogFilePath)}";
+                    logFileLinkLabel.Visible = true;
+                }
+            }
+            else
             {
-                closeButton.Enabled = true;
-            }
+                // Normal mode - set initial UI state
+                if (downloadButton != null)
+                {
+                    downloadButton.Enabled = true;
+                }
 
-            // Display initial message in log
-            AppendLog(new LogMessage("Ready to check for updates", LogLevel.Info));
-            AppendLog(new LogMessage("Click 'Download' to check GitHub for the latest release", LogLevel.Info));
+                if (installButton != null)
+                {
+                    installButton.Enabled = false;
+                }
+
+                if (closeButton != null)
+                {
+                    closeButton.Enabled = true;
+                }
+
+                // Display initial message in log
+                AppendLog(new LogMessage("Ready to check for updates", LogLevel.Info));
+                AppendLog(new LogMessage("Click 'Download' to check GitHub for the latest release", LogLevel.Info));
+            }
         }
 
         /// <summary>
@@ -894,6 +1016,83 @@ namespace SMTPServiceUpdater.UI
             catch (Exception ex)
             {
                 AppendLog(new LogMessage($"Error cleaning updates folder: {ex.Message}", LogLevel.Error));
+            }
+        }
+
+        /// <summary>
+        /// Handles the Clean Logs button click event.
+        /// Deletes only update log files (update_*.txt) from the logs folder.
+        /// </summary>
+        private void OnCleanLogsButtonClick(object? sender, EventArgs e)
+        {
+            try
+            {
+                string logsDir = System.IO.Path.Combine(_rootPath, "logs");
+                
+                if (!System.IO.Directory.Exists(logsDir))
+                {
+                    AppendLog(new LogMessage("Logs folder does not exist - nothing to clean", LogLevel.Info));
+                    return;
+                }
+
+                // Validate logs directory is within root path (security check)
+                string fullLogsPath = System.IO.Path.GetFullPath(logsDir);
+                string fullRootPath = System.IO.Path.GetFullPath(_rootPath);
+                
+                if (!fullLogsPath.StartsWith(fullRootPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    AppendLog(new LogMessage("Security error: Invalid logs path", LogLevel.Error));
+                    return;
+                }
+
+                // Get only update log files (update_*.txt)
+                var updateLogFiles = System.IO.Directory.GetFiles(logsDir, "update_*.txt");
+                
+                if (updateLogFiles.Length == 0)
+                {
+                    AppendLog(new LogMessage("No update log files found to clean", LogLevel.Info));
+                    return;
+                }
+
+                var result = MessageBox.Show(
+                    $"This will delete {updateLogFiles.Length} update log file(s).\n\nAre you sure?",
+                    "Confirm Clean Logs",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Yes)
+                {
+                    int deletedCount = 0;
+                    int errorCount = 0;
+
+                    foreach (var file in updateLogFiles)
+                    {
+                        try
+                        {
+                            System.IO.File.Delete(file);
+                            deletedCount++;
+                            AppendLog(new LogMessage($"Deleted log: {System.IO.Path.GetFileName(file)}", LogLevel.Info));
+                        }
+                        catch (Exception ex)
+                        {
+                            errorCount++;
+                            AppendLog(new LogMessage($"Failed to delete {System.IO.Path.GetFileName(file)}: {ex.Message}", LogLevel.Error));
+                        }
+                    }
+
+                    if (errorCount == 0)
+                    {
+                        AppendLog(new LogMessage($"Successfully cleaned update logs - {deletedCount} file(s) deleted", LogLevel.Success));
+                    }
+                    else
+                    {
+                        AppendLog(new LogMessage($"Cleaned with errors - {deletedCount} deleted, {errorCount} failed", LogLevel.Warning));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog(new LogMessage($"Error cleaning logs: {ex.Message}", LogLevel.Error));
             }
         }
 

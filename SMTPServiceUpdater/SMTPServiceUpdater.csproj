@@ -6,15 +6,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
-    <Version>4.2.2</Version>
-    <FileVersion>4.2.2</FileVersion>
-    <AssemblyVersion>4.2.2</AssemblyVersion>
+    <Version>4.2.7</Version>
+    <FileVersion>4.2.7</FileVersion>
+    <AssemblyVersion>4.2.7</AssemblyVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Remove="changes.txt" />
     <None Remove="changes_completed.txt" />
     <None Remove="changes_DELETE.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -33,7 +33,7 @@ namespace SMTPServiceUpdater.Services
             // Configure HttpClient (only once)
             if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
             {
-                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SMTPServiceUpdater/4.2.2");
+                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"SMTPServiceUpdater/{AppVersion.Version}");
             }
         }
 

@@ -1,9 +1,10 @@
 <Project>
   <!-- Shared Version Information -->
   <PropertyGroup>
-    <Version>4.2.2</Version>
-    <AssemblyVersion>4.2.2</AssemblyVersion>
-    <FileVersion>4.2.2</FileVersion>
+    <Version>4.2.7</Version>
+    <AssemblyVersion>4.2.7</AssemblyVersion>
+    <FileVersion>4.2.7</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <!-- Shared Product Information -->

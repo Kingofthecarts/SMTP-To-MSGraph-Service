@@ -7,66 +7,101 @@ namespace SMTPServiceUpdater.Services;
 /// </summary>
 public class UpdateLogger
 {
-    private readonly string _logFilePath;
-    private readonly string _rootPath;
-    private readonly object _fileLock = new object();
+private readonly string _logFilePath;
+private readonly string _rootPath;
+private readonly object _fileLock = new object();
+        private readonly bool _isAppending;
 
-    /// <summary>
-    /// Event raised when a log message is written (for GUI updates)
-    /// </summary>
-    public event EventHandler<LogMessage>? LogMessageReceived;
+/// <summary>
+/// Event raised when a log message is written (for GUI updates)
+/// </summary>
+        public event EventHandler<LogMessage>? LogMessageReceived;
 
-    /// <summary>
-    /// Initializes a new instance of UpdateLogger
-    /// </summary>
-    /// <param name="rootPath">Root path where SMTP Service is installed</param>
-    /// <exception cref="ArgumentException">Thrown when rootPath is null or empty</exception>
-    /// <exception cref="DirectoryNotFoundException">Thrown when logs folder doesn't exist</exception>
-    public UpdateLogger(string rootPath)
-    {
-        // Validate rootPath
-        if (string.IsNullOrWhiteSpace(rootPath))
-        {
-            throw new ArgumentException("Root path cannot be null or empty", nameof(rootPath));
+/// <summary>
+/// Initializes a new instance of UpdateLogger
+/// </summary>
+/// <param name="rootPath">Root path where SMTP Service is installed</param>
+/// <param name="existingLogPath">Optional: existing log file path to append to</param>
+/// <exception cref="ArgumentException">Thrown when rootPath is null or empty</exception>
+/// <exception cref="DirectoryNotFoundException">Thrown when logs folder doesn't exist</exception>
+public UpdateLogger(string rootPath, string? existingLogPath = null)
+{
+// Validate rootPath
+if (string.IsNullOrWhiteSpace(rootPath))
+{
+                throw new ArgumentException("Root path cannot be null or empty", nameof(rootPath));
+}
+
+_rootPath = rootPath;
+
+            // Build path to logs folder
+var logsFolder = Path.Combine(rootPath, "logs");
+
+// Create logs folder if it doesn't exist
+if (!Directory.Exists(logsFolder))
+{
+try
+{
+    Directory.CreateDirectory(logsFolder);
+}
+catch (Exception ex)
+{
+        throw new DirectoryNotFoundException($"Unable to create logs folder at: {logsFolder}. Error: {ex.Message}");
+                }
+}
+
+            // Use existing log if provided and valid, otherwise generate new
+if (!string.IsNullOrWhiteSpace(existingLogPath))
+{
+                // Validate the log path
+    ValidateLogPath(existingLogPath, rootPath);
+    
+    if (File.Exists(existingLogPath))
+{
+        _logFilePath = existingLogPath;
+        _isAppending = true;
+    }
+else
+{
+    // File doesn't exist, create new
+    _logFilePath = GenerateLogFilePath(logsFolder);
+        _isAppending = false;
         }
+            }
+            else
+            {
+                // Generate incremental log file name
+                _logFilePath = GenerateLogFilePath(logsFolder);
+                _isAppending = false;
+            }
 
-        _rootPath = rootPath;
+            // Validate the generated log path is within rootPath (security check)
+            ValidateLogPath(_logFilePath, rootPath);
 
-        // Build path to logs folder
-        var logsFolder = Path.Combine(rootPath, "logs");
-
-        // Create logs folder if it doesn't exist
-        if (!Directory.Exists(logsFolder))
-        {
+            // Create or append to the log file
             try
             {
-                Directory.CreateDirectory(logsFolder);
+                if (_isAppending)
+                {
+                    // Add separator for resumed logs
+                    File.AppendAllText(_logFilePath, Environment.NewLine);
+                    File.AppendAllText(_logFilePath, "=== RESUMED AFTER SELF-UPDATE ===" + Environment.NewLine);
+                    File.AppendAllText(_logFilePath, Environment.NewLine);
+                }
+                else
+                {
+                    // Create new empty log file
+                    File.WriteAllText(_logFilePath, string.Empty);
+                }
             }
             catch (Exception ex)
             {
-                throw new DirectoryNotFoundException($"Unable to create logs folder at: {logsFolder}. Error: {ex.Message}");
+                // If we can't create the log file, we can still log to console
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Failed to create log file: {ex.Message}");
+                Console.ResetColor();
             }
         }
-
-        // Generate incremental log file name
-        _logFilePath = GenerateLogFilePath(logsFolder);
-
-        // Validate the generated log path is within rootPath (security check)
-        ValidateLogPath(_logFilePath, rootPath);
-
-        // Create the log file
-        try
-        {
-            File.WriteAllText(_logFilePath, string.Empty);
-        }
-        catch (Exception ex)
-        {
-            // If we can't create the log file, we can still log to console
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[ERROR] Failed to create log file: {ex.Message}");
-            Console.ResetColor();
-        }
-    }
 
     /// <summary>
     /// Writes a log message with specified level

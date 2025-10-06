@@ -1,5 +1,6 @@
 using SMTPServiceUpdater.Models;
 using System.Diagnostics;
+using System.ServiceProcess;
 
 namespace SMTPServiceUpdater.Services;
 
@@ -120,26 +121,76 @@ public class SmtpServiceController
     }
 
     /// <summary>
-    /// Stops the SMTP Service process if running
+    /// Stops the SMTP Service - first tries Windows Service, then kills processes
     /// </summary>
     /// <returns>True if service was stopped successfully or was not running, false on failure</returns>
     public bool StopService()
     {
         _logger.WriteLog("Checking if SMTP Service is running...", LogLevel.Info);
 
+        bool wasRunningAsService = false;
+
+        // STEP 1: Check if running as Windows Service
+        try
+        {
+            var service = ServiceController.GetServices()
+                .FirstOrDefault(s => s.ServiceName.Equals("SMTP to MS Graph Relay", StringComparison.OrdinalIgnoreCase));
+
+            if (service != null)
+            {
+                _logger.WriteLog($"Found Windows Service: {service.ServiceName}", LogLevel.Info);
+                _logger.WriteLog($"Service Status: {service.Status}", LogLevel.Info);
+
+                if (service.Status == ServiceControllerStatus.Running)
+                {
+                    wasRunningAsService = true;
+                    _logger.WriteLog("Stopping Windows Service...", LogLevel.Warning);
+                    
+                    service.Stop();
+                    service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
+                    
+                    _logger.WriteLog("Windows Service stopped successfully", LogLevel.Success);
+                }
+                else if (service.Status != ServiceControllerStatus.Stopped)
+                {
+                    _logger.WriteLog($"Service is in {service.Status} state - waiting for it to stop...", LogLevel.Warning);
+                    service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(10));
+                }
+
+                service.Dispose();
+            }
+            else
+            {
+                _logger.WriteLog("Windows Service not found (may be running as standalone process)", LogLevel.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.WriteLog($"Error checking Windows Service: {ex.Message}", LogLevel.Warning);
+            _logger.WriteLog("Will attempt to stop processes directly", LogLevel.Info);
+        }
+
+        // STEP 2: Check for running processes (even if service was stopped, processes might still be running)
         var processes = GetSmtpServiceProcesses();
 
         if (processes.Count == 0)
         {
-            _logger.WriteLog("SMTP Service is not running", LogLevel.Info);
-            _wasRunning = false;
+            if (wasRunningAsService)
+            {
+                _logger.WriteLog("SMTP Service stopped successfully (was running as Windows Service)", LogLevel.Success);
+                _wasRunning = true;
+            }
+            else
+            {
+                _logger.WriteLog("SMTP Service is not running", LogLevel.Info);
+                _wasRunning = false;
+            }
             return true;
         }
 
-        _logger.WriteLog($"Found {processes.Count} SMTP Service process(es) running", LogLevel.Info);
+        // Found processes - kill them
+        _logger.WriteLog($"Found {processes.Count} SMTP Service process(es) still running - terminating...", LogLevel.Warning);
         _wasRunning = true;
-
-        _logger.WriteLog("Stopping SMTP Service...", LogLevel.Warning);
 
         try
         {
@@ -177,7 +228,7 @@ public class SmtpServiceController
                 if (remainingProcesses.Count == 0)
                 {
                     // All processes terminated
-                    _logger.WriteLog("SMTP Service stopped successfully", LogLevel.Success);
+                    _logger.WriteLog("All SMTP Service processes terminated successfully", LogLevel.Success);
                     return true;
                 }
 

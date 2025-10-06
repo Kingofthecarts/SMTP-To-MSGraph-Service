@@ -65,7 +65,7 @@ namespace SMTPServiceUpdater.Services
                 try
                 {
                 // STEP 1: Initialize logger
-                _logger.WriteHeader("SMTP SERVICE UPDATER v4.2.2");
+                _logger.WriteHeader(AppVersion.Header);
                 _logger.WriteLog($"Started at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}", LogLevel.Info);
                 _logger.WriteLog($"Root path: {_rootPath}", LogLevel.Info);
                 _logger.WriteSeparator();
@@ -147,25 +147,68 @@ namespace SMTPServiceUpdater.Services
                 _logger.WriteLog($"Files to add: {addCount}", addCount > 0 ? LogLevel.Success : LogLevel.Info);
                 _logger.WriteLog($"Files to replace: {replaceCount}", replaceCount > 0 ? LogLevel.Warning : LogLevel.Info);
                 _logger.WriteLog($"Files identical: {identicalCount}", LogLevel.Info);
-                _logger.WriteLog($"Files excluded: {skipCount}", LogLevel.Info);
+                _logger.WriteLog($"Files to ignore: {skipCount}", LogLevel.Info);
+                
+                // Show files being added
+                if (addCount > 0)
+                {
+                    _logger.WriteLog("Files to add:", LogLevel.Info);
+                    foreach (var op in operations.Where(o => o.Operation == OperationType.Add))
+                    {
+                        _logger.WriteLog($"  + {op.Path}", LogLevel.Success);
+                    }
+                }
+                
+                // Show files being replaced
+                if (replaceCount > 0)
+                {
+                    _logger.WriteLog("Files to replace:", LogLevel.Info);
+                    foreach (var op in operations.Where(o => o.Operation == OperationType.Replace))
+                    {
+                        _logger.WriteLog($"  ~ {op.Path}", LogLevel.Warning);
+                    }
+                }
+                
+                // Show files being ignored
+                if (skipCount > 0)
+                {
+                    _logger.WriteLog("Files to ignore (protected/excluded):", LogLevel.Info);
+                    foreach (var op in operations.Where(o => o.Operation == OperationType.Skip))
+                    {
+                        _logger.WriteLog($"  ! {op.Path}", LogLevel.Info);
+                    }
+                }
+                
                 _logger.WriteSeparator();
 
-                // STEP 7: Check for self-update
-                FileOperation? scriptOperation = operations.FirstOrDefault(o => 
-                    (o.Operation == OperationType.Add || o.Operation == OperationType.Replace) &&
-                    Path.GetFileName(o.Path).Equals("Install-Update.ps1", StringComparison.OrdinalIgnoreCase));
-
-                if (scriptOperation != null)
+                // STEP 7: Check for self-update BEFORE any other operations
+                if (CheckForSelfUpdate(operations, version))
                 {
                     _logger.WriteLog("Self-update detected - handling updater replacement", LogLevel.Warning);
-                    bool shouldExit = _selfUpdateHandler.HandleScriptUpdate(scriptOperation, version, noRestart, isAutomatic);
+                    bool shouldExit = _selfUpdateHandler.HandleSelfUpdate(operations, version, noRestart, isAutomatic, _logger.LogFilePath);
                     
                     if (shouldExit)
                     {
                         _logger.WriteLog("Exiting for self-update - bridge script will relaunch", LogLevel.Info);
-                        result.Success = true;
-                        return result;
+                        _logger.WriteLog("Application will terminate in 2 seconds...", LogLevel.Warning);
+                        
+                        // Give bridge script time to start
+                        System.Threading.Thread.Sleep(2000);
+                        
+                        // Force application exit
+                        Environment.Exit(0);
                     }
+                    
+                    // Remove self-update files from operations list since bridge will handle them
+                    operations = operations.Where(o => 
+                    {
+                        string fileName = Path.GetFileName(o.Path);
+                        return !fileName.Equals("SMTPServiceUpdater.exe", StringComparison.OrdinalIgnoreCase) &&
+                               !fileName.Equals("SMTPServiceUpdater.dll", StringComparison.OrdinalIgnoreCase) &&
+                               !fileName.Equals("Install-Update.ps1", StringComparison.OrdinalIgnoreCase);
+                    }).ToList();
+                    
+                    _logger.WriteLog("Removed updater files from operations list - will be handled by bridge", LogLevel.Info);
                 }
 
                 // STEP 8: Detect orphaned files
@@ -175,13 +218,10 @@ namespace SMTPServiceUpdater.Services
                 if (orphanedFiles.Count > 0)
                 {
                     _logger.WriteLog($"Orphaned files found: {orphanedFiles.Count}", LogLevel.Warning);
-                    foreach (var orphan in orphanedFiles.Take(10))
+                    _logger.WriteLog("Files to remove:", LogLevel.Info);
+                    foreach (var orphan in orphanedFiles)
                     {
                         _logger.WriteLog($"  - {orphan.Path}", LogLevel.Warning);
-                    }
-                    if (orphanedFiles.Count > 10)
-                    {
-                        _logger.WriteLog($"  ... and {orphanedFiles.Count - 10} more", LogLevel.Warning);
                     }
                 }
                 else
@@ -310,8 +350,9 @@ namespace SMTPServiceUpdater.Services
                 {
                     if (Directory.Exists(extractedFolder))
                     {
+                        _logger.WriteLog($"Removing extracted folder: {extractedFolder}", LogLevel.Info);
                         Directory.Delete(extractedFolder, recursive: true);
-                        _logger.WriteLog("Temporary files removed", LogLevel.Success);
+                        _logger.WriteLog("Temporary files removed successfully", LogLevel.Success);
                     }
                 }
                 catch (Exception ex)
@@ -393,5 +434,13 @@ namespace SMTPServiceUpdater.Services
         /// Gets the log file path for the current update session.
         /// </summary>
         public string? LogFilePath => _logger?.LogFilePath;
+
+        /// <summary>
+        /// Checks if any self-update files are in the operations list.
+        /// </summary>
+        private bool CheckForSelfUpdate(List<FileOperation> operations, string version)
+        {
+            return _selfUpdateHandler.CheckForSelfUpdate(operations, version);
+        }
     }
 }
