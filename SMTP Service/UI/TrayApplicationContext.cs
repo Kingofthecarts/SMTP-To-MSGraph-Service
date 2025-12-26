@@ -534,7 +534,7 @@ namespace SMTP_Service.UI
                 {
                     MessageBox.Show(
                         $"Unable to check for updates:\n{result.Error}\n\n" +
-                        "Make sure you have configured GitHub updates using Setup-GitHubToken.ps1",
+                        "Check your git.json configuration file.",
                         "Update Check Failed",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
@@ -587,78 +587,42 @@ namespace SMTP_Service.UI
                                 
                                 try
                                 {
-                                    // Path to the Install-Update.ps1 script
+                                    // Path to SMTPServiceUpdater.exe
                                     var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                                    var scriptPath = Path.Combine(baseDir, "Install-Update.ps1");
-                                    
-                                    if (!File.Exists(scriptPath))
+                                    var updaterPath = Path.Combine(baseDir, "SMTPServiceUpdater.exe");
+
+                                    if (!File.Exists(updaterPath))
                                     {
                                         MessageBox.Show(
-                                            $"Install-Update.ps1 not found at:\n{scriptPath}\n\n" +
-                                            "Please ensure the update script exists in the application directory.",
-                                            "Update Script Missing",
+                                            $"SMTPServiceUpdater.exe not found at:\n{updaterPath}\n\n" +
+                                            "Please ensure the updater exists in the application directory.",
+                                            "Updater Missing",
                                             MessageBoxButtons.OK,
                                             MessageBoxIcon.Error);
                                         return;
                                     }
-                                    
-                                    var confirmResult = MessageBox.Show(
-                                        $"The update installer will now run.\n\n" +
-                                        $"Version: {fileName}\n\n" +
-                                        "The installer will:\n" +
-                                        "• Stop the SMTP Service if running\n" +
-                                        "• Backup existing files\n" +
-                                        "• Install the update\n" +
-                                        "• Restart the service if it was running\n\n" +
-                                        "A PowerShell window will open to show the installation progress.\n\n" +
-                                        "Do you want to continue?",
-                                        "Confirm Update Installation",
-                                        MessageBoxButtons.YesNo,
-                                        MessageBoxIcon.Question);
-                                    
-                                    if (confirmResult == DialogResult.Yes)
+
+                                    Log.Information($"Launching SMTPServiceUpdater for version {fileName}");
+
+                                    // Launch SMTPServiceUpdater.exe
+                                    var process = new Process
                                     {
-                                        Log.Information($"Launching update installer for version {fileName}");
-                                        
-                                        // Launch PowerShell with the Install-Update.ps1 script
-                                        var process = new Process
+                                        StartInfo = new ProcessStartInfo
                                         {
-                                            StartInfo = new ProcessStartInfo
-                                            {
-                                                FileName = "powershell.exe",
-                                                Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                                                WorkingDirectory = baseDir,
-                                                UseShellExecute = true,
-                                                Verb = "runas" // Run as administrator
-                                            }
-                                        };
-                                        
-                                        process.Start();
-                                        
-                                        MessageBox.Show(
-                                            "Update installer launched!\n\n" +
-                                            "Follow the prompts in the PowerShell window.\n\n" +
-                                            "The application will restart automatically if the service was running.",
-                                            "Update In Progress",
-                                            MessageBoxButtons.OK,
-                                            MessageBoxIcon.Information);
-                                    }
-                                }
-                                catch (System.ComponentModel.Win32Exception)
-                                {
-                                    MessageBox.Show(
-                                        "Administrator privileges are required to install the update.\n\n" +
-                                        "Please run the application as administrator and try again.",
-                                        "Administrator Required",
-                                        MessageBoxButtons.OK,
-                                        MessageBoxIcon.Warning);
+                                            FileName = updaterPath,
+                                            WorkingDirectory = baseDir,
+                                            UseShellExecute = true
+                                        }
+                                    };
+
+                                    process.Start();
                                 }
                                 catch (Exception ex)
                                 {
                                     Log.Error(ex, "Failed to launch update installer");
                                     MessageBox.Show(
                                         $"Failed to launch update installer:\n{ex.Message}\n\n" +
-                                        $"You can manually run Install-Update.ps1 from:\n{AppDomain.CurrentDomain.BaseDirectory}",
+                                        $"You can manually run SMTPServiceUpdater.exe from:\n{AppDomain.CurrentDomain.BaseDirectory}",
                                         "Update Installation Failed",
                                         MessageBoxButtons.OK,
                                         MessageBoxIcon.Error);

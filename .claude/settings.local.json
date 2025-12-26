@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(powershell -Command \"\\(Get-Item ''D:\\\\OneDrive\\\\Dores\\\\Share Den - Documents\\\\Coding\\\\SMTP Service\\\\SMTP Service\\\\SMTP Service\\\\bin\\\\Release\\\\net9.0-windows\\\\SMTP Service.dll''\\).VersionInfo | Select-Object FileVersion,ProductVersion\")",
+      "Bash(powershell -Command \"\\(Get-Item ''D:\\\\OneDrive\\\\Dores\\\\Share Den - Documents\\\\Coding\\\\SMTP Service\\\\SMTP Service\\\\SMTP Service\\\\bin\\\\Release\\\\net9.0-windows\\\\SMTPServiceUpdater.exe''\\).VersionInfo | Select-Object FileVersion,ProductVersion\")",
+      "Bash(powershell -Command:*)",
+      "Bash(dotnet clean:*)"
+    ]
+  }
+}

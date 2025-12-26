@@ -45,9 +45,8 @@ namespace SMTPServiceUpdater.Services
                 if (operation.Operation == OperationType.Replace || operation.Operation == OperationType.Add)
                 {
                     string fileName = Path.GetFileName(operation.Path);
-                    if (fileName != null && 
-                        (fileName.Equals("Install-Update.ps1", StringComparison.OrdinalIgnoreCase) ||
-                         fileName.Equals("SMTPServiceUpdater.exe", StringComparison.OrdinalIgnoreCase) ||
+                    if (fileName != null &&
+                        (fileName.Equals("SMTPServiceUpdater.exe", StringComparison.OrdinalIgnoreCase) ||
                          fileName.Equals("SMTPServiceUpdater.dll", StringComparison.OrdinalIgnoreCase)))
                     {
                         _logger.WriteLog($"Self-update detected: {fileName} needs to be replaced", LogLevel.Warning);
@@ -96,22 +95,17 @@ namespace SMTPServiceUpdater.Services
             try
             {
                 // Find all self-update files
-                var updaterExeOp = operations.FirstOrDefault(o => 
+                var updaterExeOp = operations.FirstOrDefault(o =>
                     (o.Operation == OperationType.Replace || o.Operation == OperationType.Add) &&
                     Path.GetFileName(o.Path).Equals("SMTPServiceUpdater.exe", StringComparison.OrdinalIgnoreCase));
-                    
-                var updaterDllOp = operations.FirstOrDefault(o => 
+
+                var updaterDllOp = operations.FirstOrDefault(o =>
                     (o.Operation == OperationType.Replace || o.Operation == OperationType.Add) &&
                     Path.GetFileName(o.Path).Equals("SMTPServiceUpdater.dll", StringComparison.OrdinalIgnoreCase));
-                    
-                var scriptOp = operations.FirstOrDefault(o => 
-                    (o.Operation == OperationType.Replace || o.Operation == OperationType.Add) &&
-                    Path.GetFileName(o.Path).Equals("Install-Update.ps1", StringComparison.OrdinalIgnoreCase));
 
                 bool hasUpdaterFiles = updaterExeOp != null || updaterDllOp != null;
-                bool hasScript = scriptOp != null;
 
-                if (!hasUpdaterFiles && !hasScript)
+                if (!hasUpdaterFiles)
                 {
                     _logger.WriteLog("No self-update files found", LogLevel.Error);
                     return false;
@@ -139,23 +133,16 @@ namespace SMTPServiceUpdater.Services
                     File.Copy(updaterExeOp.SourcePath, newExePath, overwrite: true);
                     _logger.WriteLog($"Saved new updater exe as: {newExePath}", LogLevel.Info);
                 }
-                
+
                 if (updaterDllOp != null)
                 {
                     string newDllPath = Path.Combine(_rootPath, "SMTPServiceUpdater-NEW.dll");
                     File.Copy(updaterDllOp.SourcePath, newDllPath, overwrite: true);
                     _logger.WriteLog($"Saved new updater dll as: {newDllPath}", LogLevel.Info);
                 }
-                
-                if (scriptOp != null)
-                {
-                    string newScriptPath = Path.Combine(_rootPath, "Install-Update-NEW.ps1");
-                    File.Copy(scriptOp.SourcePath, newScriptPath, overwrite: true);
-                    _logger.WriteLog($"Saved new updater script as: {newScriptPath}", LogLevel.Info);
-                }
 
                 // Create bridge script
-                string? bridgeScriptPath = CreateBridgeScript(version, noRestart, isAutomatic, hasUpdaterFiles, hasScript, logFilePath);
+                string? bridgeScriptPath = CreateBridgeScript(version, noRestart, isAutomatic, logFilePath);
                 if (string.IsNullOrEmpty(bridgeScriptPath))
                 {
                     _logger.WriteLog("Failed to create bridge script", LogLevel.Error);
@@ -183,13 +170,11 @@ namespace SMTPServiceUpdater.Services
         /// <param name="version">Version being installed</param>
         /// <param name="noRestart">No-restart flag to pass to relaunched updater</param>
         /// <param name="isAutomatic">Whether this is automatic mode</param>
-        /// <param name="hasUpdaterFiles">Whether exe/dll files need updating</param>
-        /// <param name="hasScript">Whether PowerShell script needs updating</param>
         /// <param name="logFilePath">Current log file path to continue logging to</param>
         /// <returns>Path to the created bridge script, or null on failure</returns>
-        private string? CreateBridgeScript(string version, bool noRestart, bool isAutomatic, bool hasUpdaterFiles, bool hasScript, string? logFilePath)
+        private string? CreateBridgeScript(string version, bool noRestart, bool isAutomatic, string? logFilePath)
         {
-            string bridgeScriptPath = Path.Combine(_rootPath, "Install-Update-Bridge.ps1");
+            string bridgeScriptPath = Path.Combine(_rootPath, "Update-Bridge.ps1");
 
             try
             {
@@ -201,110 +186,60 @@ namespace SMTPServiceUpdater.Services
                 scriptContent.AppendLine("Start-Sleep -Seconds 5");
                 scriptContent.AppendLine();
                 scriptContent.AppendLine($"$rootPath = '{_rootPath}'");
-                scriptContent.AppendLine("$bridgeScript = Join-Path $rootPath 'Install-Update-Bridge.ps1'");
+                scriptContent.AppendLine("$bridgeScript = Join-Path $rootPath 'Update-Bridge.ps1'");
                 scriptContent.AppendLine();
-                
-                if (hasUpdaterFiles)
+                scriptContent.AppendLine("# Update updater executable and DLL");
+                scriptContent.AppendLine("$oldExe = Join-Path $rootPath 'SMTPServiceUpdater.exe'");
+                scriptContent.AppendLine("$newExe = Join-Path $rootPath 'SMTPServiceUpdater-NEW.exe'");
+                scriptContent.AppendLine("$oldDll = Join-Path $rootPath 'SMTPServiceUpdater.dll'");
+                scriptContent.AppendLine("$newDll = Join-Path $rootPath 'SMTPServiceUpdater-NEW.dll'");
+                scriptContent.AppendLine();
+                scriptContent.AppendLine("Write-Host 'Replacing updater files...' -ForegroundColor Yellow");
+                scriptContent.AppendLine();
+                scriptContent.AppendLine("if (Test-Path $newExe) {");
+                scriptContent.AppendLine("    if (Test-Path $oldExe) {");
+                scriptContent.AppendLine("        Remove-Item $oldExe -Force");
+                scriptContent.AppendLine("        Write-Host 'Removed old updater exe' -ForegroundColor Green");
+                scriptContent.AppendLine("    }");
+                scriptContent.AppendLine("    Rename-Item $newExe $oldExe -Force");
+                scriptContent.AppendLine("    Write-Host 'Installed new updater exe' -ForegroundColor Green");
+                scriptContent.AppendLine("}");
+                scriptContent.AppendLine();
+                scriptContent.AppendLine("if (Test-Path $newDll) {");
+                scriptContent.AppendLine("    if (Test-Path $oldDll) {");
+                scriptContent.AppendLine("        Remove-Item $oldDll -Force");
+                scriptContent.AppendLine("        Write-Host 'Removed old updater dll' -ForegroundColor Green");
+                scriptContent.AppendLine("    }");
+                scriptContent.AppendLine("    Rename-Item $newDll $oldDll -Force");
+                scriptContent.AppendLine("    Write-Host 'Installed new updater dll' -ForegroundColor Green");
+                scriptContent.AppendLine("}");
+                scriptContent.AppendLine();
+                scriptContent.AppendLine("Write-Host 'Relaunching updater...' -ForegroundColor Yellow");
+                scriptContent.AppendLine("$updaterExe = Join-Path $rootPath 'SMTPServiceUpdater.exe'");
+
+                // Build arguments based on mode
+                if (isAutomatic)
                 {
-                    scriptContent.AppendLine("# Update updater executable and DLL");
-                    scriptContent.AppendLine("$oldExe = Join-Path $rootPath 'SMTPServiceUpdater.exe'");
-                    scriptContent.AppendLine("$newExe = Join-Path $rootPath 'SMTPServiceUpdater-NEW.exe'");
-                    scriptContent.AppendLine("$oldDll = Join-Path $rootPath 'SMTPServiceUpdater.dll'");
-                    scriptContent.AppendLine("$newDll = Join-Path $rootPath 'SMTPServiceUpdater-NEW.dll'");
-                    scriptContent.AppendLine();
-                    scriptContent.AppendLine("Write-Host 'Replacing updater files...' -ForegroundColor Yellow");
-                    scriptContent.AppendLine();
-                    scriptContent.AppendLine("if (Test-Path $newExe) {");
-                    scriptContent.AppendLine("    if (Test-Path $oldExe) {");
-                    scriptContent.AppendLine("        Remove-Item $oldExe -Force");
-                    scriptContent.AppendLine("        Write-Host 'Removed old updater exe' -ForegroundColor Green");
-                    scriptContent.AppendLine("    }");
-                    scriptContent.AppendLine("    Rename-Item $newExe $oldExe -Force");
-                    scriptContent.AppendLine("    Write-Host 'Installed new updater exe' -ForegroundColor Green");
-                    scriptContent.AppendLine("}");
-                    scriptContent.AppendLine();
-                    scriptContent.AppendLine("if (Test-Path $newDll) {");
-                    scriptContent.AppendLine("    if (Test-Path $oldDll) {");
-                    scriptContent.AppendLine("        Remove-Item $oldDll -Force");
-                    scriptContent.AppendLine("        Write-Host 'Removed old updater dll' -ForegroundColor Green");
-                    scriptContent.AppendLine("    }");
-                    scriptContent.AppendLine("    Rename-Item $newDll $oldDll -Force");
-                    scriptContent.AppendLine("    Write-Host 'Installed new updater dll' -ForegroundColor Green");
-                    scriptContent.AppendLine("}");
-                    scriptContent.AppendLine();
-                }
-                
-                if (hasScript)
-                {
-                    scriptContent.AppendLine("# Update PowerShell script");
-                    scriptContent.AppendLine("$oldScript = Join-Path $rootPath 'Install-Update.ps1'");
-                    scriptContent.AppendLine("$newScript = Join-Path $rootPath 'Install-Update-NEW.ps1'");
-                    scriptContent.AppendLine();
-                    scriptContent.AppendLine("Write-Host 'Replacing updater script...' -ForegroundColor Yellow");
-                    scriptContent.AppendLine("if (Test-Path $oldScript) {");
-                    scriptContent.AppendLine("    Remove-Item $oldScript -Force");
-                    scriptContent.AppendLine("    Write-Host 'Removed old updater script' -ForegroundColor Green");
-                    scriptContent.AppendLine("}");
-                    scriptContent.AppendLine();
-                    scriptContent.AppendLine("if (Test-Path $newScript) {");
-                    scriptContent.AppendLine("    Rename-Item $newScript $oldScript -Force");
-                    scriptContent.AppendLine("    Write-Host 'Installed new updater script' -ForegroundColor Green");
-                    scriptContent.AppendLine("} else {");
-                    scriptContent.AppendLine("    Write-Host 'ERROR: New updater script not found!' -ForegroundColor Red");
-                    scriptContent.AppendLine("    exit 1");
-                    scriptContent.AppendLine("}");
-                    scriptContent.AppendLine();
-                }
-                
-                scriptContent.AppendLine("Write-Host 'Relaunching updater with updated version...' -ForegroundColor Yellow");
-                
-                if (hasUpdaterFiles)
-                {
-                    // Relaunch the GUI updater with resume flag (version will be auto-detected)
-                    scriptContent.AppendLine("$updaterExe = Join-Path $rootPath 'SMTPServiceUpdater.exe'");
-                    
-                    // Build arguments based on mode
-                    if (isAutomatic)
-                    {
-                        // Auto mode: use -a flag, --resume, and --mode auto
-                        scriptContent.AppendLine("$arguments = '--resume --mode auto'");
-                    }
-                    else
-                    {
-                        // GUI mode: --resume and --mode gui
-                        scriptContent.AppendLine("$arguments = '--resume --mode gui'");
-                    }
-                    
-                    if (noRestart)
-                    {
-                        scriptContent.AppendLine("$arguments += ' --no-restart'");
-                    }
-                    
-                    // Add log file path if provided
-                    if (!string.IsNullOrWhiteSpace(logFilePath))
-                    {
-                        // Make path relative to root for cleaner command line
-                        string relativeLogPath = Path.GetRelativePath(_rootPath, logFilePath).Replace("\\", "/");
-                        scriptContent.AppendLine($"$arguments += ' --log-file \"{relativeLogPath}\"'");
-                    }
-                    
-                    scriptContent.AppendLine("Start-Process $updaterExe -ArgumentList $arguments -WorkingDirectory $rootPath");
+                    scriptContent.AppendLine("$arguments = '--resume --mode auto'");
                 }
                 else
                 {
-                    // Relaunch the PowerShell script
-                    scriptContent.AppendLine("$oldScript = Join-Path $rootPath 'Install-Update.ps1'");
-                    scriptContent.AppendLine($"$arguments = '-v {version}'");
-                    
-                    if (noRestart)
-                    {
-                        scriptContent.AppendLine("$arguments += ' -n'");
-                    }
-                    
-                    scriptContent.AppendLine();
-                    scriptContent.AppendLine("Start-Process powershell -ArgumentList \"-ExecutionPolicy Bypass -File `\"$oldScript`\" $arguments\" -WorkingDirectory $rootPath");
+                    scriptContent.AppendLine("$arguments = '--resume --mode gui'");
                 }
-                
+
+                if (noRestart)
+                {
+                    scriptContent.AppendLine("$arguments += ' --no-restart'");
+                }
+
+                // Add log file path if provided
+                if (!string.IsNullOrWhiteSpace(logFilePath))
+                {
+                    string relativeLogPath = Path.GetRelativePath(_rootPath, logFilePath).Replace("\\", "/");
+                    scriptContent.AppendLine($"$arguments += ' --log-file \"{relativeLogPath}\"'");
+                }
+
+                scriptContent.AppendLine("Start-Process $updaterExe -ArgumentList $arguments -WorkingDirectory $rootPath");
                 scriptContent.AppendLine();
                 scriptContent.AppendLine("Write-Host 'Bridge script complete - cleaning up...' -ForegroundColor Green");
                 scriptContent.AppendLine("Start-Sleep -Seconds 1");
@@ -316,7 +251,7 @@ namespace SMTPServiceUpdater.Services
 
                 File.WriteAllText(bridgeScriptPath, scriptContent.ToString());
                 _logger.WriteLog($"Created bridge script: {bridgeScriptPath}", LogLevel.Success);
-                
+
                 return bridgeScriptPath;
             }
             catch (Exception ex)

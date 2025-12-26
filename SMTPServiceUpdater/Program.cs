@@ -51,8 +51,8 @@ namespace SMTPServiceUpdater
                     case "-r":
                     case "--resume":
                         resumeInstall = true;
-                        // Next arg should be the version
-                        if (i + 1 < args.Length)
+                        // Next arg could be the version (optional) - only if it doesn't start with -
+                        if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                         {
                             versionToResume = args[i + 1];
                             i++; // Skip next arg since we consumed it

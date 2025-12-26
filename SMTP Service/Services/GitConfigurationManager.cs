@@ -1,169 +1,90 @@
 using System;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Serilog;
 
 namespace SMTP_Service.Services
 {
+    /// <summary>
+    /// Manages GitHub configuration for update checks.
+    /// Reads plaintext values from git.json for public repository access.
+    /// Falls back to default public repository if config is missing or invalid.
+    /// </summary>
     public class GitConfigurationManager
     {
-        // Must match PowerShell script
-        private const string ENCRYPTION_KEY = "SMTP2GraphRelay2025SecureKey!32c";
-        private const string SALT = "SMTPRelay2025";
-        private const int ITERATIONS = 1000;
-        
+        // Default public repository - used as fallback if git.json is missing or invalid
+        private const string DefaultRepoOwner = "Kingofthecarts";
+        private const string DefaultRepoName = "SMTP-To-MSGraph-Service";
+
         private readonly string _configPath;
         private GitConfiguration? _config;
-        private string? _decryptedOwner;
-        private string? _decryptedRepo;
-        private string? _decryptedToken;
-        
+        private bool _usingDefaults;
+
         public GitConfigurationManager()
         {
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
             _configPath = Path.Combine(appDir, "config", "git.json");
             LoadConfiguration();
         }
-        
-        public string GetGitHubToken()
-        {
-            if (_decryptedToken != null)
-                return _decryptedToken;
-                
-            if (string.IsNullOrEmpty(_config?.GitHub?.Token))
-            {
-                Log.Warning("GitHub token not configured");
-                return string.Empty;
-            }
-            
-            _decryptedToken = DecryptString(_config.GitHub.Token);
-            if (string.IsNullOrEmpty(_decryptedToken))
-            {
-                Log.Error("Failed to decrypt GitHub token");
-                return string.Empty;
-            }
-            
-            return _decryptedToken;
-        }
-        
-        private string DecryptString(string encryptedText)
-        {
-            try
-            {
-                var saltBytes = Encoding.UTF8.GetBytes(SALT);
-                
-                using var passwordDerive = new Rfc2898DeriveBytes(ENCRYPTION_KEY, saltBytes, ITERATIONS, HashAlgorithmName.SHA256);
-                var keyBytes = passwordDerive.GetBytes(32); // 256-bit
-                var ivBytes = passwordDerive.GetBytes(16);  // 128-bit
-                
-                using var aes = Aes.Create();
-                aes.Key = keyBytes;
-                aes.IV = ivBytes;
-                aes.Mode = CipherMode.CBC;
-                aes.Padding = PaddingMode.PKCS7;
-                
-                var encryptedBytes = Convert.FromBase64String(encryptedText);
-                
-                using var decryptor = aes.CreateDecryptor();
-                using var memoryStream = new MemoryStream(encryptedBytes);
-                using var cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read);
-                using var reader = new StreamReader(cryptoStream);
-                
-                return reader.ReadToEnd();
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to decrypt token");
-                return string.Empty;
-            }
-        }
-        
+
         private void LoadConfiguration()
         {
             try
             {
                 if (!File.Exists(_configPath))
                 {
-                    Log.Warning($"Git configuration not found at {_configPath}");
+                    Log.Warning($"Git configuration not found at {_configPath}, using defaults");
                     _config = null;
+                    _usingDefaults = true;
                     return;
                 }
-                
+
                 var json = File.ReadAllText(_configPath);
                 _config = JsonSerializer.Deserialize<GitConfiguration>(json);
-                
-                // Decrypt and cache the values
-                if (_config?.GitHub != null)
+
+                // Check if config values are valid (not encrypted/base64)
+                var owner = _config?.GitHub?.RepoOwner ?? "";
+                var repo = _config?.GitHub?.RepoName ?? "";
+
+                if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo) ||
+                    owner.Contains('=') || owner.Contains('/') ||
+                    repo.Contains('=') || repo.Contains('/'))
                 {
-                    if (!string.IsNullOrEmpty(_config.GitHub.RepoOwner))
-                        _decryptedOwner = DecryptString(_config.GitHub.RepoOwner);
-                    
-                    if (!string.IsNullOrEmpty(_config.GitHub.RepoName))
-                        _decryptedRepo = DecryptString(_config.GitHub.RepoName);
-                    
-                    // Token is decrypted on demand via GetGitHubToken()
+                    Log.Warning("Git configuration appears invalid or encrypted, using defaults");
+                    _usingDefaults = true;
                 }
-                
-                Log.Information($"Loaded git configuration (encrypted)");
+                else
+                {
+                    _usingDefaults = false;
+                    Log.Information("Loaded git configuration");
+                }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to load git configuration");
+                Log.Error(ex, "Failed to load git configuration, using defaults");
                 _config = null;
+                _usingDefaults = true;
             }
         }
-        
-        // Public properties - now return decrypted values
-        public string RepoOwner 
-        {
-            get
-            {
-                if (_decryptedOwner != null)
-                    return _decryptedOwner;
-                    
-                if (string.IsNullOrEmpty(_config?.GitHub?.RepoOwner))
-                    return "";
-                    
-                _decryptedOwner = DecryptString(_config.GitHub.RepoOwner);
-                return _decryptedOwner ?? "";
-            }
-        }
-        
-        public string RepoName 
-        {
-            get
-            {
-                if (_decryptedRepo != null)
-                    return _decryptedRepo;
-                    
-                if (string.IsNullOrEmpty(_config?.GitHub?.RepoName))
-                    return "";
-                    
-                _decryptedRepo = DecryptString(_config.GitHub.RepoName);
-                return _decryptedRepo ?? "";
-            }
-        }
-        
+
+        public string RepoOwner => _usingDefaults ? DefaultRepoOwner : (_config?.GitHub?.RepoOwner ?? DefaultRepoOwner);
+        public string RepoName => _usingDefaults ? DefaultRepoName : (_config?.GitHub?.RepoName ?? DefaultRepoName);
         public bool CheckOnStartup => _config?.UpdateSettings?.CheckOnStartup ?? false;
-        public bool IsConfigured => _config != null && !string.IsNullOrEmpty(_config.GitHub?.Token);
-        
+        public bool IsConfigured => true; // Always configured with defaults
+
         // Configuration classes
         public class GitConfiguration
         {
             public GitHubSettings? GitHub { get; set; }
             public UpdateSettings? UpdateSettings { get; set; }
         }
-        
+
         public class GitHubSettings
         {
             public string? RepoOwner { get; set; }
             public string? RepoName { get; set; }
-            public string? Token { get; set; }
-            public string? UpdateCheckUrl { get; set; }
         }
-        
+
         public class UpdateSettings
         {
             public bool CheckOnStartup { get; set; }

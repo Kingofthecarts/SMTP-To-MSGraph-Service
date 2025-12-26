@@ -121,28 +121,16 @@ namespace SMTPServiceUpdater.Models
     public class GitHubSettings
     {
         /// <summary>
-        /// Encrypted GitHub repository owner/organization
+        /// GitHub repository owner/organization
         /// </summary>
         [JsonPropertyName("RepoOwner")]
         public string RepoOwner { get; set; } = string.Empty;
 
         /// <summary>
-        /// Encrypted GitHub repository name
+        /// GitHub repository name
         /// </summary>
         [JsonPropertyName("RepoName")]
         public string RepoName { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Encrypted personal access token (optional for public repos)
-        /// </summary>
-        [JsonPropertyName("Token")]
-        public string? Token { get; set; }
-
-        /// <summary>
-        /// Update check URL template
-        /// </summary>
-        [JsonPropertyName("UpdateCheckUrl")]
-        public string? UpdateCheckUrl { get; set; }
     }
 
     /// <summary>

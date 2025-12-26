@@ -205,7 +205,7 @@ namespace SMTPServiceUpdater.Services
                         string fileName = Path.GetFileName(o.Path);
                         return !fileName.Equals("SMTPServiceUpdater.exe", StringComparison.OrdinalIgnoreCase) &&
                                !fileName.Equals("SMTPServiceUpdater.dll", StringComparison.OrdinalIgnoreCase) &&
-                               !fileName.Equals("Install-Update.ps1", StringComparison.OrdinalIgnoreCase);
+                               true;  // No additional files to exclude
                     }).ToList();
                     
                     _logger.WriteLog("Removed updater files from operations list - will be handled by bridge", LogLevel.Info);

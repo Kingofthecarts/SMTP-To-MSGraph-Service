@@ -1,5 +1,37 @@
 # SMTP to MS Graph Relay Service - Changelog
 
+## VERSION 5.0.2 - December 26, 2025
+
+### 🐛 Bug Fixes
+
+- Fixed `--resume` argument parsing - was incorrectly consuming `--mode` as version parameter
+- Added default repository fallback (`Kingofthecarts/SMTP-To-MSGraph-Service`) when git.json is missing or invalid
+- Auto-detect encrypted/base64 config values and use defaults instead
+- Removed unused `GitConfigDecryptor.cs` helper from SMTPServiceUpdater
+
+---
+
+## VERSION 5.0.1 - December 26, 2025
+
+### 🧹 Code Cleanup
+
+Cleanup from 5.0.0 update cycle - removed unused authentication code.
+
+---
+
+## VERSION 5.0.0 - December 26, 2025
+
+### 🎯 Public GitHub Updates
+
+Switched update system to public GitHub releases.
+
+- Updates from: `Kingofthecarts/SMTP-To-MSGraph-Service`
+- Removed PowerShell scripts (`Install-Update.ps1`, `Setup-GitHubToken.ps1`, `Test-GitHubConfig.ps1`)
+- `SMTPServiceUpdater.exe` handles all updates
+- Simple `git.json` with just repo owner/name
+
+---
+
 ## VERSION 4.2.7 - October 5, 2025
 
 ### 🔧 Improvements

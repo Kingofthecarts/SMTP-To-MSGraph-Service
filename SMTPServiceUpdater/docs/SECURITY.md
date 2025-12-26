@@ -46,7 +46,7 @@
 
 - HTTPS-only GitHub API calls
 - User-Agent header required (GitHub best practice)
-- Optional Bearer token authentication
+- Public repository access (no authentication required)
 - Downloaded files validated by size
 - No arbitrary URL downloads (GitHub API only)
 

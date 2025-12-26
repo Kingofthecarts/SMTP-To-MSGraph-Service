@@ -9,7 +9,7 @@ public static class AppVersion
     /// <summary>
     /// Current application version (semantic versioning: Major.Minor.Patch)
     /// </summary>
-    public const string Version = "4.2.7";
+    public const string Version = "5.0.5";
 
     /// <summary>
     /// Application name with version for display purposes
