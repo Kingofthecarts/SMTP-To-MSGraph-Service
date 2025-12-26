@@ -410,3 +410,5 @@ FodyWeavers.xsd
 /SMTPServiceUpdater/docs/STEP_15.txt
 /SMTPServiceUpdater/docs/STEP_16.txt
 /SMTPServiceUpdater/UPDATER_DOCUMENTATION.txt
+/nul
+/.gitignore
